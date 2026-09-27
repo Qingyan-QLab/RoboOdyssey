@@ -1,0 +1,749 @@
+{
+  "schema_version": 3,
+  "scene_id": "scene000430",
+  "session_id": "session_000",
+  "state_assumption": "continuous_runtime_state",
+  "tasks": [
+    {
+      "task_id": "navigation_000",
+      "task_type": "navigation",
+      "task_family": "named_place_revisit",
+      "target": {
+        "object_ids": [
+          "studyRoom1_bookshelf_1509243_yflib032"
+        ],
+        "room_ids": [
+          "studyRoom1"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "reached_target": true,
+        "goal_pose": {
+          "position": [
+            18.9253017,
+            -3.314401199999999,
+            0.0
+          ],
+          "orientation": null
+        },
+        "target_geometry": {
+          "type": "aabb_2d",
+          "world_aabb_xy": {
+            "min": [
+              16.94691026210785,
+              -3.260964470019877
+            ],
+            "max": [
+              20.013672351837158,
+              -2.7300005824718476
+            ]
+          },
+          "source": "scene_metainfo.geometry.world_aabb"
+        }
+      },
+      "reference_trajectory": {
+        "coordinate_frame": "world",
+        "points": [
+          {
+            "position": [
+              18.325301699999997,
+              -5.1644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.375301699999998,
+              -5.1144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.4253017,
+              -5.0644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.4753017,
+              -5.0144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.5253017,
+              -4.964401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.575301699999997,
+              -4.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.625301699999998,
+              -4.8644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.6753017,
+              -4.8144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.7253017,
+              -4.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.7753017,
+              -4.714401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.825301699999997,
+              -4.6644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9253017,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9753017,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.075301699999997,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.125301699999998,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.1753017,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.2253017,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.2753017,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.5644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.5144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.464401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.4144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.3644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.3144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.2644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.214401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.1644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.1144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.0644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -4.0144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.9644011999999993,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.8644011999999996,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.814401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.7144011999999993,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.6644012000000004,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.6144011999999996,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.325301699999997,
+              -3.564401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.2753017,
+              -3.5144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.2253017,
+              -3.4644011999999993,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.1753017,
+              -3.4144012000000004,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.125301699999998,
+              -3.3644011999999996,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.075301699999997,
+              -3.314401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -3.314401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9753017,
+              -3.314401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9253017,
+              -3.314401199999999,
+              0.0
+            ],
+            "orientation": null
+          }
+        ],
+        "length_m": 2.7813708498984764,
+        "planner": {
+          "name": "grid_shortest_path",
+          "version": 1,
+          "connectivity": 8,
+          "robot_radius_m": 0.1
+        }
+      },
+      "success_criteria": {
+        "target_distance_type": "aabb_2d",
+        "position_tolerance_m": 0.8,
+        "orientation_tolerance_deg": null,
+        "collision_allowed": true
+      },
+      "named_place": {
+        "name": "Maple Point",
+        "object_id": "studyRoom1_bookshelf_1509243_yflib032",
+        "room_id": "studyRoom1"
+      },
+      "paired_task": {
+        "session_id": "session_003",
+        "task_id": "navigation_002"
+      },
+      "depends_on": []
+    },
+    {
+      "task_id": "navigation_001",
+      "task_type": "navigation",
+      "task_family": "object_navigation",
+      "target": {
+        "object_ids": [
+          "masterBedroom2_Nightstand_1406810_yflib025"
+        ],
+        "room_ids": [
+          "masterBedroom2"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "reached_target": true,
+        "goal_pose": {
+          "position": [
+            18.825301699999997,
+            -10.1144012,
+            0.0
+          ],
+          "orientation": null
+        },
+        "target_geometry": {
+          "type": "aabb_2d",
+          "world_aabb_xy": {
+            "min": [
+              18.32538187240612,
+              -10.374909125189417
+            ],
+            "max": [
+              18.724161057980716,
+              -9.875090926897757
+            ]
+          },
+          "source": "scene_metainfo.geometry.world_aabb"
+        }
+      },
+      "reference_trajectory": {
+        "coordinate_frame": "world",
+        "points": [
+          {
+            "position": [
+              18.825301699999997,
+              -10.2644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.825301699999997,
+              -10.2144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.825301699999997,
+              -10.1644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.825301699999997,
+              -10.1144012,
+              0.0
+            ],
+            "orientation": null
+          }
+        ],
+        "length_m": 0.15000000000000002,
+        "planner": {
+          "name": "grid_shortest_path",
+          "version": 1,
+          "connectivity": 8,
+          "robot_radius_m": 0.1
+        }
+      },
+      "success_criteria": {
+        "target_distance_type": "aabb_2d",
+        "position_tolerance_m": 0.8,
+        "orientation_tolerance_deg": null,
+        "collision_allowed": true
+      },
+      "depends_on": [
+        "navigation_000"
+      ]
+    },
+    {
+      "task_id": "qa_002",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "studyRoom1_book206"
+        ],
+        "room_ids": [
+          "studyRoom1"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "study",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "study"
+        ]
+      },
+      "evidence": {
+        "type": "object_room",
+        "object_id": "studyRoom1_book206",
+        "room_id": "studyRoom1"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "navigation_001"
+      ]
+    },
+    {
+      "task_id": "qa_003",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "studyRoom1_book242"
+        ],
+        "room_ids": [
+          "studyRoom1"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "study",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "study"
+        ]
+      },
+      "evidence": {
+        "type": "object_room",
+        "object_id": "studyRoom1_book242",
+        "room_id": "studyRoom1"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "qa_002"
+      ]
+    },
+    {
+      "task_id": "manipulation_004",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "target": {
+        "object_ids": [
+          "studyRoom1_computer002"
+        ],
+        "room_ids": [
+          "studyRoom1",
+          "masterBedroom2"
+        ]
+      },
+      "preconditions": [
+        {
+          "object_id": "studyRoom1_computer002",
+          "relation": "reachable",
+          "expected": true
+        }
+      ],
+      "expected_outcome": {
+        "state_changes": [
+          {
+            "object_id": "studyRoom1_computer002",
+            "relation_before": {
+              "type": "in_room",
+              "room_id": "studyRoom1"
+            },
+            "relation_after": {
+              "type": "in_room",
+              "room_id": "masterBedroom2"
+            }
+          }
+        ]
+      },
+      "reference_actions": [
+        {
+          "action": "pick",
+          "object_id": "studyRoom1_computer002"
+        },
+        {
+          "action": "place",
+          "object_id": "studyRoom1_computer002",
+          "support_object_id": null,
+          "room_id": "masterBedroom2"
+        }
+      ],
+      "success_criteria": {
+        "required_state_changes": [
+          "studyRoom1_computer002"
+        ],
+        "placement_relation": "in_room",
+        "position_tolerance_m": 0.05,
+        "orientation_tolerance_deg": 10.0
+      },
+      "depends_on": [
+        "qa_003"
+      ]
+    },
+    {
+      "task_id": "manipulation_005",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "target": {
+        "object_ids": [
+          "studyRoom1_keyboard002"
+        ],
+        "room_ids": [
+          "studyRoom1",
+          "masterBedroom2"
+        ]
+      },
+      "preconditions": [
+        {
+          "object_id": "studyRoom1_keyboard002",
+          "relation": "reachable",
+          "expected": true
+        }
+      ],
+      "expected_outcome": {
+        "state_changes": [
+          {
+            "object_id": "studyRoom1_keyboard002",
+            "relation_before": {
+              "type": "in_room",
+              "room_id": "studyRoom1"
+            },
+            "relation_after": {
+              "type": "in_room",
+              "room_id": "masterBedroom2"
+            }
+          }
+        ]
+      },
+      "reference_actions": [
+        {
+          "action": "pick",
+          "object_id": "studyRoom1_keyboard002"
+        },
+        {
+          "action": "place",
+          "object_id": "studyRoom1_keyboard002",
+          "support_object_id": null,
+          "room_id": "masterBedroom2"
+        }
+      ],
+      "success_criteria": {
+        "required_state_changes": [
+          "studyRoom1_keyboard002"
+        ],
+        "placement_relation": "in_room",
+        "position_tolerance_m": 0.05,
+        "orientation_tolerance_deg": 10.0
+      },
+      "depends_on": [
+        "manipulation_004"
+      ]
+    }
+  ]
+}

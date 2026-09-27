@@ -1,0 +1,222 @@
+{
+  "schema_version": 3,
+  "dataset_schema": "scene_package_v2",
+  "scene_id": "scene000430",
+  "session_id": "session_007",
+  "parent_session_id": "session_006",
+  "instruction": null,
+  "start_pose_policy": "inherit",
+  "execution": {
+    "order": "listed",
+    "state_inheritance": "continuous_runtime_state"
+  },
+  "tasks": [
+    {
+      "task_id": "navigation_000",
+      "task_type": "navigation",
+      "task_family": "point_navigation",
+      "capabilities": [
+        "navigation"
+      ],
+      "depends_on": [],
+      "target": {
+        "object_ids": [],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "instruction": "Go to the point at (19.03, -6.91) metres."
+    },
+    {
+      "task_id": "navigation_001",
+      "task_type": "navigation",
+      "task_family": "point_navigation",
+      "capabilities": [
+        "navigation"
+      ],
+      "depends_on": [
+        "navigation_000"
+      ],
+      "target": {
+        "object_ids": [],
+        "room_ids": [
+          "bathroom1"
+        ]
+      },
+      "instruction": "Go to the point at (27.23, -7.06) metres."
+    },
+    {
+      "task_id": "qa_002",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "capabilities": [
+        "qa"
+      ],
+      "depends_on": [
+        "navigation_001"
+      ],
+      "target": {
+        "object_ids": [
+          "bathroom2_showerhead_1476568_yflib040"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "question": "Which room contains the shower in the bathroom?",
+      "answer_type": "free_text",
+      "target_references": [
+        {
+          "object_id": "bathroom2_showerhead_1476568_yflib040",
+          "text": "shower in the bathroom",
+          "rules": [
+            {
+              "type": "category",
+              "value": "shower"
+            },
+            {
+              "type": "room",
+              "room_id": "bathroom2",
+              "value": "bathroom"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "qa_003",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "capabilities": [
+        "qa"
+      ],
+      "depends_on": [
+        "qa_002"
+      ],
+      "target": {
+        "object_ids": [
+          "bathroom2_toilet_1419968_yflib039"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "question": "Which room contains the toilet in the bathroom?",
+      "answer_type": "free_text",
+      "target_references": [
+        {
+          "object_id": "bathroom2_toilet_1419968_yflib039",
+          "text": "toilet in the bathroom",
+          "rules": [
+            {
+              "type": "category",
+              "value": "toilet"
+            },
+            {
+              "type": "room",
+              "room_id": "bathroom2",
+              "value": "bathroom"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "manipulation_004",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "capabilities": [
+        "navigation",
+        "manipulation"
+      ],
+      "depends_on": [
+        "qa_003"
+      ],
+      "target": {
+        "object_ids": [
+          "corridor1_aromatherapy003"
+        ],
+        "room_ids": [
+          "corridor1",
+          "bathroom2"
+        ]
+      },
+      "instruction": "Pick up the aromatherapy in the corridor near the handsoap in the corridor 1, carry it to the bathroom 2, and place it there.",
+      "target_references": [
+        {
+          "object_id": "corridor1_aromatherapy003",
+          "text": "aromatherapy in the corridor near the handsoap",
+          "rules": [
+            {
+              "type": "category",
+              "value": "aromatherapy"
+            },
+            {
+              "type": "room",
+              "room_id": "corridor1",
+              "value": "corridor"
+            },
+            {
+              "type": "near",
+              "object_id": "corridor1_handsoap002",
+              "distance_max_m": 0.062
+            }
+          ],
+          "candidate_count": 2,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "manipulation_005",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "capabilities": [
+        "navigation",
+        "manipulation"
+      ],
+      "depends_on": [
+        "manipulation_004"
+      ],
+      "target": {
+        "object_ids": [
+          "livingRoom1_sugarCube004"
+        ],
+        "room_ids": [
+          "livingRoom1",
+          "bathroom2"
+        ]
+      },
+      "instruction": "Pick up the sugar cube in the living room near the sugar cube in the living room 1, carry it to the bathroom 2, and place it there.",
+      "target_references": [
+        {
+          "object_id": "livingRoom1_sugarCube004",
+          "text": "sugar cube in the living room near the sugar cube",
+          "rules": [
+            {
+              "type": "category",
+              "value": "sugar cube"
+            },
+            {
+              "type": "room",
+              "room_id": "livingRoom1",
+              "value": "living room"
+            },
+            {
+              "type": "near",
+              "object_id": "livingRoom1_sugarCube003",
+              "distance_max_m": 0.028
+            }
+          ],
+          "candidate_count": 2,
+          "uniqueness": "verified"
+        }
+      ]
+    }
+  ],
+  "ground_truth_file": "ground_truth.json"
+}

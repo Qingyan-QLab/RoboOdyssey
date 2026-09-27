@@ -1,0 +1,1 @@
+dataset/scene000430_after_changes/**/*.usdz filter=lfs diff=lfs merge=lfs -text

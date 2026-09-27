@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene000430",
+  "session_id": "session_004",
+  "trigger": "session_start",
+  "visible_to_agent": false,
+  "changes": [
+    {
+      "object_id": "livingRoom1_book003",
+      "change_type": "support_or_region_change",
+      "pose_before": {
+        "coordinate_frame": "world",
+        "position": [
+          21.50183305709659,
+          -7.174092745443853,
+          0.490731
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          -0.7071067341080643,
+          0.7071068282650276
+        ]
+      },
+      "pose_after": {
+        "coordinate_frame": "world",
+        "position": [
+          20.34780215,
+          -6.2775004,
+          0.490731
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          -0.7071067341080643,
+          0.7071068282650276
+        ]
+      },
+      "relation_before": {
+        "room_id": "livingRoom1",
+        "support_object_id": null,
+        "relation_type": "in_room"
+      },
+      "relation_after": {
+        "room_id": "corridor1",
+        "support_object_id": null,
+        "relation_type": "in_room"
+      },
+      "reason": "deterministic_hidden_room_mutation"
+    }
+  ]
+}

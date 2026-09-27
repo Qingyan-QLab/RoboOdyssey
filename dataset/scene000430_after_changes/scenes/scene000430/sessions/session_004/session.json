@@ -1,0 +1,287 @@
+{
+  "schema_version": 3,
+  "dataset_schema": "scene_package_v2",
+  "scene_id": "scene000430",
+  "session_id": "session_004",
+  "parent_session_id": "session_003",
+  "instruction": null,
+  "start_pose_policy": "inherit",
+  "execution": {
+    "order": "listed",
+    "state_inheritance": "continuous_runtime_state"
+  },
+  "tasks": [
+    {
+      "task_id": "navigation_000",
+      "task_type": "navigation",
+      "task_family": "multi_site_workflow",
+      "capabilities": [
+        "navigation"
+      ],
+      "depends_on": [],
+      "target": {
+        "object_ids": [
+          "bathroom2_toilet_1419968_yflib039",
+          "bathroom2_showerhead_1476568_yflib040"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "instruction": "Go to the toilet in the bathroom, then continue to the shower in the bathroom.",
+      "workflow": [
+        {
+          "step_id": "site_1",
+          "action": "visit",
+          "object_id": "bathroom2_toilet_1419968_yflib039"
+        },
+        {
+          "step_id": "site_2",
+          "action": "visit",
+          "object_id": "bathroom2_showerhead_1476568_yflib040"
+        }
+      ],
+      "target_references": [
+        {
+          "object_id": "bathroom2_toilet_1419968_yflib039",
+          "text": "toilet in the bathroom",
+          "rules": [
+            {
+              "type": "category",
+              "value": "toilet"
+            },
+            {
+              "type": "room",
+              "room_id": "bathroom2",
+              "value": "bathroom"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        },
+        {
+          "object_id": "bathroom2_showerhead_1476568_yflib040",
+          "text": "shower in the bathroom",
+          "rules": [
+            {
+              "type": "category",
+              "value": "shower"
+            },
+            {
+              "type": "room",
+              "room_id": "bathroom2",
+              "value": "bathroom"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "navigation_001",
+      "task_type": "navigation",
+      "task_family": "object_navigation",
+      "capabilities": [
+        "navigation"
+      ],
+      "depends_on": [
+        "navigation_000"
+      ],
+      "target": {
+        "object_ids": [
+          "bathroom1_toilet_1419968_yflib037"
+        ],
+        "room_ids": [
+          "bathroom1"
+        ]
+      },
+      "instruction": "Go to the toilet in the bathroom.",
+      "target_references": [
+        {
+          "object_id": "bathroom1_toilet_1419968_yflib037",
+          "text": "toilet in the bathroom",
+          "rules": [
+            {
+              "type": "category",
+              "value": "toilet"
+            },
+            {
+              "type": "room",
+              "room_id": "bathroom1",
+              "value": "bathroom"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "qa_002",
+      "task_type": "qa",
+      "task_family": "navigation_qa",
+      "capabilities": [
+        "navigation",
+        "qa",
+        "memory"
+      ],
+      "depends_on": [
+        "navigation_001"
+      ],
+      "target": {
+        "object_ids": [
+          "studyRoom1_bookshelf_1509243_yflib032"
+        ],
+        "room_ids": [
+          "studyRoom1"
+        ]
+      },
+      "question": "Which room contained the bookshelf in the study you encountered earlier?",
+      "answer_type": "free_text",
+      "target_references": [
+        {
+          "object_id": "studyRoom1_bookshelf_1509243_yflib032",
+          "text": "bookshelf in the study",
+          "rules": [
+            {
+              "type": "category",
+              "value": "bookshelf"
+            },
+            {
+              "type": "room",
+              "room_id": "studyRoom1",
+              "value": "study"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "qa_003",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "capabilities": [
+        "qa"
+      ],
+      "depends_on": [
+        "qa_002"
+      ],
+      "target": {
+        "object_ids": [
+          "bathroom2_toilet_1419968_yflib039"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "question": "Which room contains the toilet in the bathroom?",
+      "answer_type": "free_text",
+      "target_references": [
+        {
+          "object_id": "bathroom2_toilet_1419968_yflib039",
+          "text": "toilet in the bathroom",
+          "rules": [
+            {
+              "type": "category",
+              "value": "toilet"
+            },
+            {
+              "type": "room",
+              "room_id": "bathroom2",
+              "value": "bathroom"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "manipulation_004",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "capabilities": [
+        "navigation",
+        "manipulation"
+      ],
+      "depends_on": [
+        "qa_003"
+      ],
+      "target": {
+        "object_ids": [
+          "livingRoom1_aromatherapyDiffuser002"
+        ],
+        "room_ids": [
+          "livingRoom1",
+          "bathroom2"
+        ]
+      },
+      "instruction": "Pick up the aromatherapy diffuser in the living room in the living room 1, carry it to the bathroom 2, and place it there.",
+      "target_references": [
+        {
+          "object_id": "livingRoom1_aromatherapyDiffuser002",
+          "text": "aromatherapy diffuser in the living room",
+          "rules": [
+            {
+              "type": "category",
+              "value": "aromatherapy diffuser"
+            },
+            {
+              "type": "room",
+              "room_id": "livingRoom1",
+              "value": "living room"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "manipulation_005",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "capabilities": [
+        "navigation",
+        "manipulation"
+      ],
+      "depends_on": [
+        "manipulation_004"
+      ],
+      "target": {
+        "object_ids": [
+          "livingRoom1_cookie002"
+        ],
+        "room_ids": [
+          "livingRoom1",
+          "bathroom2"
+        ]
+      },
+      "instruction": "Pick up the cookie in the living room in the living room 1, carry it to the bathroom 2, and place it there.",
+      "target_references": [
+        {
+          "object_id": "livingRoom1_cookie002",
+          "text": "cookie in the living room",
+          "rules": [
+            {
+              "type": "category",
+              "value": "cookie"
+            },
+            {
+              "type": "room",
+              "room_id": "livingRoom1",
+              "value": "living room"
+            }
+          ],
+          "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    }
+  ],
+  "ground_truth_file": "ground_truth.json",
+  "mutation_file": "mutation.json"
+}

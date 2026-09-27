@@ -1,0 +1,1067 @@
+{
+  "schema_version": 3,
+  "scene_id": "scene000430",
+  "session_id": "session_009",
+  "state_assumption": "continuous_runtime_state",
+  "tasks": [
+    {
+      "task_id": "navigation_000",
+      "task_type": "navigation",
+      "task_family": "multi_site_workflow",
+      "target": {
+        "object_ids": [
+          "bathroom2_toilet_1419968_yflib039",
+          "bathroom2_showerhead_1476568_yflib040"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "reached_target": true,
+        "completed_sites": [
+          "bathroom2_toilet_1419968_yflib039",
+          "bathroom2_showerhead_1476568_yflib040"
+        ],
+        "goal_pose": {
+          "position": [
+            19.0253017,
+            -6.9144011999999995,
+            0.0
+          ],
+          "orientation": null
+        },
+        "target_geometry": {
+          "type": "aabb_2d",
+          "world_aabb_xy": {
+            "min": [
+              18.650348417306887,
+              -7.170001321615281
+            ],
+            "max": [
+              18.85023321835159,
+              -6.702293466249683
+            ]
+          },
+          "source": "scene_metainfo.geometry.world_aabb"
+        },
+        "site_geometries": {
+          "bathroom2_toilet_1419968_yflib039": {
+            "type": "aabb_2d",
+            "world_aabb_xy": {
+              "min": [
+                18.941439469480034,
+                -6.079228133762124
+              ],
+              "max": [
+                19.34914127471399,
+                -5.393479323410988
+              ]
+            },
+            "source": "scene_metainfo.geometry.world_aabb"
+          },
+          "bathroom2_showerhead_1476568_yflib040": {
+            "type": "aabb_2d",
+            "world_aabb_xy": {
+              "min": [
+                18.650348417306887,
+                -7.170001321615281
+              ],
+              "max": [
+                18.85023321835159,
+                -6.702293466249683
+              ]
+            },
+            "source": "scene_metainfo.geometry.world_aabb"
+          }
+        }
+      },
+      "reference_trajectory": {
+        "coordinate_frame": "world",
+        "points": [
+          {
+            "position": [
+              19.0253017,
+              -7.0644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -7.0144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.964401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.8644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.8144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.714401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.6644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.5644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.5144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9753017,
+              -6.464401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9253017,
+              -6.4144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.3644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.3144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.2644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.214401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.1644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.1144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.0644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.0144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.964401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.8644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.8144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.714401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.8144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.8644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -5.964401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.0144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.0644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.875301699999998,
+              -6.1144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9253017,
+              -6.1644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              18.9753017,
+              -6.214401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.2644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.3144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.3644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.4144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.464401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.5144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.5644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.6644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.714401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.8144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.8644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              19.0253017,
+              -6.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          }
+        ],
+        "length_m": 2.6742640687119286,
+        "planner": {
+          "name": "grid_shortest_path",
+          "version": 1,
+          "connectivity": 8,
+          "robot_radius_m": 0.1
+        }
+      },
+      "success_criteria": {
+        "target_distance_type": "aabb_2d",
+        "position_tolerance_m": 0.8,
+        "orientation_tolerance_deg": null,
+        "collision_allowed": true,
+        "required_site_order": [
+          "bathroom2_toilet_1419968_yflib039",
+          "bathroom2_showerhead_1476568_yflib040"
+        ]
+      },
+      "depends_on": []
+    },
+    {
+      "task_id": "navigation_001",
+      "task_type": "navigation",
+      "task_family": "object_navigation",
+      "target": {
+        "object_ids": [
+          "bathroom1_showerfaucet_1405719_yflib036"
+        ],
+        "room_ids": [
+          "bathroom1"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "reached_target": true,
+        "goal_pose": {
+          "position": [
+            27.1253017,
+            -5.6144012,
+            0.0
+          ],
+          "orientation": null
+        },
+        "target_geometry": {
+          "type": "aabb_2d",
+          "world_aabb_xy": {
+            "min": [
+              27.26737217442361,
+              -5.89264502394104
+            ],
+            "max": [
+              27.484969993773557,
+              -5.385000847457886
+            ]
+          },
+          "source": "scene_metainfo.geometry.world_aabb"
+        }
+      },
+      "reference_trajectory": {
+        "coordinate_frame": "world",
+        "points": [
+          {
+            "position": [
+              26.4253017,
+              -7.4644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.4753017,
+              -7.4144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.5253017,
+              -7.3644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.575301699999997,
+              -7.3144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.6253017,
+              -7.2644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.6753017,
+              -7.2144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.7253017,
+              -7.1644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.7753017,
+              -7.1144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.825301699999997,
+              -7.0644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.8753017,
+              -7.0144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.9253017,
+              -6.964401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              26.9753017,
+              -6.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.0253017,
+              -6.8644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.075301699999997,
+              -6.8144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.714401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.6644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.6144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.5644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.5144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.464401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.4144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.3644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.3144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.2644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.214401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.1644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.1144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.0644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -6.0144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.964401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.9144011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.8644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.8144012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.7644012,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.714401199999999,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.6644011999999995,
+              0.0
+            ],
+            "orientation": null
+          },
+          {
+            "position": [
+              27.1253017,
+              -5.6144012,
+              0.0
+            ],
+            "orientation": null
+          }
+        ],
+        "length_m": 2.1399494936611667,
+        "planner": {
+          "name": "grid_shortest_path",
+          "version": 1,
+          "connectivity": 8,
+          "robot_radius_m": 0.1
+        }
+      },
+      "success_criteria": {
+        "target_distance_type": "aabb_2d",
+        "position_tolerance_m": 0.8,
+        "orientation_tolerance_deg": null,
+        "collision_allowed": true
+      },
+      "depends_on": [
+        "navigation_000"
+      ]
+    },
+    {
+      "task_id": "qa_002",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "bathroom2_toilet_1419968_yflib039"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "bathroom",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "bathroom"
+        ]
+      },
+      "evidence": {
+        "type": "object_room",
+        "object_id": "bathroom2_toilet_1419968_yflib039",
+        "room_id": "bathroom2"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "navigation_001"
+      ]
+    },
+    {
+      "task_id": "qa_003",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "bathroom2_showerhead_1476568_yflib040"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "bathroom",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "bathroom"
+        ]
+      },
+      "evidence": {
+        "type": "object_room",
+        "object_id": "bathroom2_showerhead_1476568_yflib040",
+        "room_id": "bathroom2"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "qa_002"
+      ]
+    },
+    {
+      "task_id": "manipulation_004",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "target": {
+        "object_ids": [
+          "masterBedroom1_deskorganizer004"
+        ],
+        "room_ids": [
+          "masterBedroom1",
+          "bathroom2"
+        ]
+      },
+      "preconditions": [
+        {
+          "object_id": "masterBedroom1_deskorganizer004",
+          "relation": "reachable",
+          "expected": true
+        }
+      ],
+      "expected_outcome": {
+        "state_changes": [
+          {
+            "object_id": "masterBedroom1_deskorganizer004",
+            "relation_before": {
+              "type": "in_room",
+              "room_id": "masterBedroom1"
+            },
+            "relation_after": {
+              "type": "in_room",
+              "room_id": "bathroom2"
+            }
+          }
+        ]
+      },
+      "reference_actions": [
+        {
+          "action": "pick",
+          "object_id": "masterBedroom1_deskorganizer004"
+        },
+        {
+          "action": "place",
+          "object_id": "masterBedroom1_deskorganizer004",
+          "support_object_id": null,
+          "room_id": "bathroom2"
+        }
+      ],
+      "success_criteria": {
+        "required_state_changes": [
+          "masterBedroom1_deskorganizer004"
+        ],
+        "placement_relation": "in_room",
+        "position_tolerance_m": 0.05,
+        "orientation_tolerance_deg": 10.0
+      },
+      "depends_on": [
+        "qa_003"
+      ]
+    },
+    {
+      "task_id": "manipulation_005",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "target": {
+        "object_ids": [
+          "masterBedroom1_deskorganizer003"
+        ],
+        "room_ids": [
+          "masterBedroom1",
+          "bathroom2"
+        ]
+      },
+      "preconditions": [
+        {
+          "object_id": "masterBedroom1_deskorganizer003",
+          "relation": "reachable",
+          "expected": true
+        }
+      ],
+      "expected_outcome": {
+        "state_changes": [
+          {
+            "object_id": "masterBedroom1_deskorganizer003",
+            "relation_before": {
+              "type": "in_room",
+              "room_id": "masterBedroom1"
+            },
+            "relation_after": {
+              "type": "in_room",
+              "room_id": "bathroom2"
+            }
+          }
+        ]
+      },
+      "reference_actions": [
+        {
+          "action": "pick",
+          "object_id": "masterBedroom1_deskorganizer003"
+        },
+        {
+          "action": "place",
+          "object_id": "masterBedroom1_deskorganizer003",
+          "support_object_id": null,
+          "room_id": "bathroom2"
+        }
+      ],
+      "success_criteria": {
+        "required_state_changes": [
+          "masterBedroom1_deskorganizer003"
+        ],
+        "placement_relation": "in_room",
+        "position_tolerance_m": 0.05,
+        "orientation_tolerance_deg": 10.0
+      },
+      "depends_on": [
+        "manipulation_004"
+      ]
+    }
+  ]
+}

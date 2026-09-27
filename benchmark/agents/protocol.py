@@ -1,0 +1,36 @@
+"""Validation for the language-independent JSONL Agent Protocol v1."""
+from __future__ import annotations
+
+from typing import Any
+
+PROTOCOL_VERSION = "1.0"
+REQUEST_TYPES = frozenset({"session_start", "step", "qa"})
+ACTION_TYPES = frozenset({
+    "no_op", "move_forward", "move_backward", "move_left", "move_right",
+    "turn_left", "turn_right",
+    "look_up", "look_down", "pick", "place", "open", "close", "reset",
+})
+
+
+def validate_response(request_type: str, response: Any) -> dict[str, Any]:
+    if request_type not in REQUEST_TYPES:
+        raise ValueError(f"unknown request type: {request_type!r}")
+    if not isinstance(response, dict):
+        raise ValueError("agent response must be a JSON object")
+    if "memory_update" in response and not isinstance(response["memory_update"], dict):
+        raise ValueError("memory_update must be an object")
+    if "done" in response and not isinstance(response["done"], bool):
+        raise ValueError("done must be a boolean")
+    if request_type == "step":
+        action = response.get("action")
+        name = action if isinstance(action, str) else action.get("action") if isinstance(action, dict) else None
+        if name not in ACTION_TYPES:
+            raise ValueError(f"unknown action: {name!r}")
+        if isinstance(action, dict):
+            if "distance" in action and not isinstance(action["distance"], (int, float)):
+                raise ValueError("action distance must be numeric")
+            if "angle_degrees" in action and not isinstance(action["angle_degrees"], (int, float)):
+                raise ValueError("action angle_degrees must be numeric")
+    elif request_type == "qa" and "answer" not in response and "prediction" not in response:
+        raise ValueError("qa response requires 'answer' or 'prediction'")
+    return response

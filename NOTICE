@@ -1,0 +1,4 @@
+Third-party notices for the official scene asset bundle must be completed before public redistribution.
+
+NVIDIA Isaac Sim is governed by NVIDIA's applicable license and is not distributed by this Python package.
+The residential scenes reference ArchVis assets; their redistribution terms require verification by the dataset publisher.

@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""HoloAgent -> Long-Term Benchmark Protocol v1 adapter.
+
+HoloAgent is a framework, not a single checkpoint.  This process keeps the
+benchmark's stdin/stdout JSONL contract and delegates planning/execution to a
+small HTTP gateway exposed by AgentOS, an FSR-VLN service, or a test stub.
+
+The gateway receives ``{"protocol_version": "1.0", "request": ...}`` and
+returns either a protocol response directly or ``{"response": {...}}``.  A
+response may contain a normal benchmark ``action`` or a gateway-normalized
+``relative_nav`` object with ``forward``, ``left`` and ``rotation`` fields.
+The latter is not the raw response of HoloAgent's robot_bridge: robot_bridge
+returns command-accepted status and reports completion asynchronously.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from typing import Any
+from urllib import error, request
+
+
+ACTION_NAMES = {
+    "no_op", "move_forward", "move_backward", "move_left", "move_right",
+    "turn_left", "turn_right", "look_up", "look_down", "pick", "place",
+    "open", "close", "reset",
+}
+
+
+def _post_json(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = request.Request(url, data=body,
+                          headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with request.urlopen(req, timeout=timeout) as response:
+            value = json.loads(response.read().decode("utf-8"))
+    except (OSError, error.URLError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"HoloAgent gateway request failed: {exc}") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("HoloAgent gateway must return a JSON object")
+    return value.get("response", value)
+
+
+def _relative_action(value: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert one HoloAgent relative-nav result to one benchmark action."""
+    try:
+        forward = float(value.get("forward", 0.0))
+        left = float(value.get("left", 0.0))
+        rotation = float(value.get("rotation", 0.0))
+    except (TypeError, ValueError):
+        return None
+    if abs(rotation) >= 1e-3:
+        return {"action": "turn_left" if rotation > 0 else "turn_right",
+                "angle_degrees": abs(rotation)}
+    if abs(forward) >= 1e-3:
+        return {"action": "move_forward" if forward > 0 else "move_backward",
+                "distance": abs(forward)}
+    if abs(left) >= 1e-3:
+        return {"action": "move_left" if left > 0 else "move_right",
+                "distance": abs(left)}
+    return {"action": "no_op"}
+
+
+def normalize_response(value: dict[str, Any]) -> dict[str, Any]:
+    """Normalize gateway output without hiding malformed actions."""
+    response = dict(value)
+    action = response.get("action")
+    if action is None and isinstance(response.get("relative_nav"), dict):
+        action = _relative_action(response["relative_nav"])
+    if action is None and isinstance(response.get("skill_result"), dict):
+        result = response["skill_result"]
+        if isinstance(result.get("relative_nav"), dict):
+            action = _relative_action(result["relative_nav"])
+    if action is None and ("success" in response or "accepted" in response) \
+            and not response.get("gateway_status"):
+        raise RuntimeError(
+            "received a raw HoloAgent robot_bridge status; configure a "
+            "/benchmark/step gateway that returns a Protocol v1 action")
+    if action is None:
+        action = {"action": "no_op"}
+    if isinstance(action, str):
+        action = {"action": action}
+    if not isinstance(action, dict) or action.get("action") not in ACTION_NAMES:
+        raise RuntimeError(f"HoloAgent returned unsupported action: {action!r}")
+    response["action"] = action
+    response.setdefault("done", False)
+    return response
+
+
+class HoloAgentAdapter:
+    def __init__(self, endpoint: str | None, timeout: float, dry_run: bool = False):
+        self.endpoint = endpoint
+        self.timeout = float(timeout)
+        self.dry_run = dry_run
+        self.memory: dict[str, Any] = {}
+        self.scene_id: str | None = None
+
+    def request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.dry_run:
+            return {"action": {"action": "no_op"}, "done": False,
+                    "memory_update": {"adapter_dry_run": True}}
+        if not self.endpoint:
+            raise RuntimeError("set --endpoint or HOLOAGENT_ENDPOINT, or use --dry-run")
+        response = _post_json(self.endpoint, {
+            "protocol_version": "1.0", "source": "longterm_benchmark",
+            "request": payload,
+        }, self.timeout)
+        return normalize_response(response) if payload.get("type") == "step" else response
+
+    def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
+        request_type = payload.get("type")
+        if request_type == "session_start":
+            self.scene_id = payload.get("scene_id")
+            self.memory = dict(payload.get("memory") or {})
+        elif request_type == "step":
+            self.memory.update(payload.get("memory") or {})
+        response = self.request(payload)
+        update = response.get("memory_update")
+        if isinstance(update, dict):
+            self.memory.update(update)
+        return response
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--endpoint", default=os.getenv("HOLOAGENT_ENDPOINT"),
+                        help="AgentOS/FSR gateway URL; or set HOLOAGENT_ENDPOINT")
+    parser.add_argument("--timeout", type=float,
+                        default=float(os.getenv("HOLOAGENT_TIMEOUT", "30")))
+    parser.add_argument("--dry-run", action="store_true",
+                        help="keep protocol alive without calling HoloAgent")
+    args = parser.parse_args()
+    adapter = HoloAgentAdapter(args.endpoint, args.timeout, args.dry_run)
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        payload: dict[str, Any] = {}
+        try:
+            payload = json.loads(line)
+            if not isinstance(payload, dict):
+                raise ValueError("request must be a JSON object")
+            response = adapter.handle(payload)
+        except Exception as exc:
+            print(f"holoagent adapter error: {exc}", file=sys.stderr, flush=True)
+            response = {"action": {"action": "no_op"}, "done": True,
+                        "adapter_error": str(exc)} if payload.get("type") == "step" else {
+                            "memory_update": {"adapter_error": str(exc)}}
+        sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

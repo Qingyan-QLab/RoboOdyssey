@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Long-Term Benchmark Agent Protocol v1 response",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "oneOf": [
+            {"enum": ["no_op", "move_forward", "move_backward", "move_left", "move_right", "turn_left", "turn_right", "look_up", "look_down", "pick", "place", "open", "close", "reset"]},
+            {
+              "type": "object",
+              "required": ["action"],
+              "properties": {
+                "action": {"enum": ["no_op", "move_forward", "move_backward", "move_left", "move_right", "turn_left", "turn_right", "look_up", "look_down", "pick", "place", "open", "close", "reset"]},
+                "distance": {"type": "number"},
+                "angle_degrees": {"type": "number"},
+                "object_id": {"type": "string"},
+                "target": {"type": "string"},
+                "room_id": {"type": "string"}
+              },
+              "additionalProperties": true
+            }
+          ]
+        },
+        "done": {"type": "boolean"},
+        "memory_update": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "anyOf": [{"required": ["answer"]}, {"required": ["prediction"]}],
+      "properties": {
+        "answer": {},
+        "prediction": {},
+        "memory_update": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "ok": {"type": "boolean"},
+        "memory_update": {"type": "object"}
+      },
+      "additionalProperties": true
+    }
+  ]
+}

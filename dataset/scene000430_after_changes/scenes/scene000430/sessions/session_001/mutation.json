@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene000430",
+  "session_id": "session_001",
+  "trigger": "session_start",
+  "visible_to_agent": false,
+  "changes": [
+    {
+      "object_id": "masterBedroom2_book003",
+      "change_type": "support_or_region_change",
+      "pose_before": {
+        "coordinate_frame": "world",
+        "position": [
+          18.548754623743754,
+          -10.11292626073845,
+          0.432944563400309
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          -0.7071067341080643,
+          0.7071068282650276
+        ]
+      },
+      "pose_after": {
+        "coordinate_frame": "world",
+        "position": [
+          27.185298266666667,
+          -4.151667183333333,
+          0.432944563400309
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          -0.7071067341080643,
+          0.7071068282650276
+        ]
+      },
+      "relation_before": {
+        "room_id": "masterBedroom2",
+        "support_object_id": null,
+        "relation_type": "in_room"
+      },
+      "relation_after": {
+        "room_id": "kitchen1",
+        "support_object_id": null,
+        "relation_type": "in_room"
+      },
+      "reason": "deterministic_hidden_room_mutation"
+    }
+  ]
+}
