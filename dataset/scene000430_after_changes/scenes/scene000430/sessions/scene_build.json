@@ -15,7 +15,10 @@
     "navigation": {
       "path": "navigation.npz",
       "format_version": 1,
-      "sha256": "3bc5e7125a35a723c4cfa72609c6c0b5f67b60b27cee1e7215c24c1435247868"
+      "sha256": "e15efa3c9fd25afadabcee4ae5a844feb0f4cbbb59938122dbab755c5c1bf4e3",
+      "method": "physx_collider_overlap_box_raster",
+      "baseline_aabb_path": "navigation_aabb.npz",
+      "baseline_aabb_sha256": "3bc5e7125a35a723c4cfa72609c6c0b5f67b60b27cee1e7215c24c1435247868"
     },
     "manipulation": {
       "path": "manipulation.json",

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAX_STEPS="${SMOKE_MAX_STEPS:-20}"
-DATASET="${DATASET_DIR:-${ROOT}/dataset/scene000430_new}"
+DATASET="${DATASET_DIR:-${ROOT}/dataset/scene000430_after_changes}"
 
 "${ROOT}/scripts/check_env.sh" --require-isaac --dataset "${DATASET}"
 

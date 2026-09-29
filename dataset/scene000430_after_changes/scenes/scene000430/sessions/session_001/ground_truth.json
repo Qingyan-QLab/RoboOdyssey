@@ -479,6 +479,42 @@
       "depends_on": [
         "manipulation_004"
       ]
+    },
+    {
+      "task_id": "qa_006",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "studyRoom1_book206"
+        ],
+        "room_ids": [
+          "studyRoom1",
+          "kitchen1"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "book",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "book",
+          "studyRoom1_book206"
+        ]
+      },
+      "evidence": {
+        "type": "hidden_mutation",
+        "source_session_id": "session_000",
+        "object_id": "studyRoom1_book206",
+        "room_before": "studyRoom1",
+        "room_after": "kitchen1"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "manipulation_005"
+      ]
     }
   ]
 }

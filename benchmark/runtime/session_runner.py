@@ -14,6 +14,7 @@ from ..scenes.dataset_loader import SessionRecord
 from ..scenes.state_composer import apply_changes, compose_session_state
 from ..evaluation.success import evaluate_embodied_task, evaluate_qa
 from .instruction import plan_room_trajectory, session_start_pose
+from .reference import resolve_runtime_reference
 
 
 def _jsonable(value: Any) -> Any:
@@ -91,6 +92,7 @@ class SessionRunner:
         qa_judge: Any | None = None, step_delay: float = 0.0, wait_callback=None,
         viewer_callback=None, transition_callback=None, reset_requested_callback=None,
         viewer_sync_callback=None, log_callback=None, session_start_pose_mode: str = "inherit",
+        task_ids: set[str] | None = None, task_types: set[str] | None = None,
     ):
         self.output_root = Path(output_root)
         self.agent = agent
@@ -103,6 +105,8 @@ class SessionRunner:
         self.reset_requested_callback = reset_requested_callback
         self.viewer_sync_callback = viewer_sync_callback
         self.log_callback = log_callback
+        self.task_ids = task_ids
+        self.task_types = task_types
         if session_start_pose_mode not in {"inherit", "explicit"}:
             raise ValueError("session_start_pose_mode must be 'inherit' or 'explicit'")
         self.session_start_pose_mode = session_start_pose_mode
@@ -249,6 +253,14 @@ class SessionRunner:
                      (action.get("source") if isinstance(action, dict) else None) or "agent",
                      "agent_requested": bool(response.get("agent_requested", True))}
             events.append(event)
+            if task_step == 0 or (task_step + 1) % 10 == 0:
+                action_name = action if isinstance(action, str) else action.get("action")
+                self._log(
+                    f"task_progress scene={scene_id} session={session.session_id} "
+                    f"task={task['task_id']} step={task_step + 1}/{self.max_steps} "
+                    f"action={action_name} success={info.get('success')} "
+                    f"reason={info.get('reason', '')}"
+                )
             if self._current_output is not None:
                 with (self._current_output / "action_changelog.jsonl").open("a", encoding="utf-8") as stream:
                     stream.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -303,6 +315,12 @@ class SessionRunner:
                 # use the first reference point of the session's first task as
                 # the reset/task start, never an instruction camera waypoint.
                 gt = session.ground_truth()
+                tasks = [task for task in session.tasks
+                         if (self.task_ids is None or str(task["task_id"]) in self.task_ids)
+                         and (self.task_types is None or str(task["task_type"]) in self.task_types)]
+                if not tasks:
+                    self._log(f"session_skipped scene={scene_id} session={session.session_id} reason=no_selected_tasks")
+                    continue
                 explicit_pose = session_start_pose(session, gt, env)
                 use_inherited_pose = (env is not None and self.session_start_pose_mode == "inherit"
                                       and session.metadata.get("start_pose_policy", "inherit") == "inherit"
@@ -312,7 +330,16 @@ class SessionRunner:
                 else:
                     start_pose = explicit_pose
                 if hasattr(env, "begin_session"):
+                    requested_start_pose = deepcopy(start_pose)
                     env.begin_session(start_pose, apply_pose=not use_inherited_pose)
+                    start_pose = env.get_agent_pose()
+                    requested_position = (requested_start_pose or {}).get("position")
+                    if requested_position and start_pose.get("position") != requested_position:
+                        self._log(
+                            f"session_start_pose_adjusted scene={scene_id} "
+                            f"session={session.session_id} requested={requested_position} "
+                            f"actual={start_pose.get('position')}"
+                        )
                 elif start_pose is not None:
                     env.set_agent_pose(start_pose, update_reset_pose=True)
                 output = self.output_root / "scenes" / scene_id / "sessions" / session.session_id
@@ -323,8 +350,8 @@ class SessionRunner:
                 self._current_reset_count = 0
                 self._current_session_id = session.session_id
                 private_by_id = {str(item["task_id"]): item for item in gt["tasks"]}
-                task_ids = [str(task["task_id"]) for task in session.tasks]
-                if set(task_ids) != set(private_by_id):
+                task_ids = [str(task["task_id"]) for task in tasks]
+                if not set(task_ids).issubset(private_by_id):
                     raise ValueError(f"task/ground-truth mismatch in {session.session_id}")
 
                 (output / "session_meta.json").write_text(json.dumps({
@@ -341,7 +368,7 @@ class SessionRunner:
                                     "instruction": task.get("instruction"),
                                     "question": task.get("question"),
                                     "depends_on": task.get("depends_on", [])}
-                                   for task in session.tasks],
+                                   for task in tasks],
                     "mutation": mutation,
                     "initial_state": session_initial_state,
                 }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -362,7 +389,7 @@ class SessionRunner:
                     session_instruction=session_instruction,
                     session_start_pose=start_pose,
                     task_summary=", ".join(
-                        f"{task['task_id']} ({task['task_type']})" for task in session.tasks
+                        f"{task['task_id']} ({task['task_type']})" for task in tasks
                     ),
                     event="session_start",
                 )
@@ -411,7 +438,7 @@ class SessionRunner:
                     self._show(scene_id=scene_id, session_id=session.session_id,
                                session_instruction=session_instruction,
                                task_summary=", ".join(f"{task['task_id']} ({task['task_type']})"
-                                                       for task in session.tasks),
+                                                       for task in tasks),
                                event="session_views_complete")
 
                 start_response = self._request({
@@ -432,16 +459,17 @@ class SessionRunner:
                            session_instruction=session.metadata.get("instruction"),
                            session_start_pose=start_pose,
                            session_camera_poses=instruction_poses,
-                           task_summary=", ".join(f"{task['task_id']} ({task['task_type']})" for task in session.tasks),
+                           task_summary=", ".join(f"{task['task_id']} ({task['task_type']})" for task in tasks),
                            event="session_ready")
 
                 all_events: list[dict[str, Any]] = []
                 task_results = []
                 reset_count = 0
-                for task in session.tasks:
+                for task in tasks:
                     self._current_task_id = str(task["task_id"])
                     self._current_task = task
-                    private = private_by_id[str(task["task_id"])]
+                    private = resolve_runtime_reference(
+                        task, private_by_id[str(task["task_id"])], env)
                     if task["task_type"] == "qa":
                         result = self._run_qa(scene_id, session, task, private, memory, env)
                     else:

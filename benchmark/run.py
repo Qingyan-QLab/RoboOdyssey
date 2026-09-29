@@ -8,18 +8,21 @@ import json
 import logging
 import math
 import re
+import subprocess
+import sys
 from pathlib import Path
 import traceback
 
 from .agents.agent_api import AgentProcess
 from .agents.protocol import PROTOCOL_VERSION
 from .scenes.dataset_loader import BenchmarkDataset
+from .scenes.state_composer import compose_session_state
 from .evaluation.report import write_summary
 from .runtime.session_runner import SessionRunner
 from .scenes.holoagent_sensor_bridge import HoloAgentSensorTopics
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATASET = ROOT / "dataset" / "scene000430_new"
+DEFAULT_DATASET = ROOT / "dataset" / "scene000430_after_changes"
 DEFAULT_HOLOAGENT_SENSOR_TOPICS = HoloAgentSensorTopics()
 
 
@@ -53,6 +56,17 @@ def _digest(path: Path) -> str:
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             value.update(block)
+    return value.hexdigest()
+
+
+def _dataset_digest(root: Path) -> str:
+    """Hash dataset paths and contents so task/GT edits change the run identity."""
+    value = hashlib.sha256()
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        value.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                value.update(block)
     return value.hexdigest()
 
 
@@ -260,7 +274,7 @@ def _inspect(dataset: BenchmarkDataset, scene_ids: list[str]) -> None:
             print(f"  {session.session_id}: [{kinds}]")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--agent-cmd", default=f"python3 {ROOT / 'examples' / 'random_agent.py'}",
@@ -268,6 +282,12 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / "results",
                         help="base directory; each run is written to a timestamped child")
     parser.add_argument("--scene", action="append", help="scene id; repeat to select multiple scenes")
+    parser.add_argument("--session", action="append",
+                        help="diagnostic session id; repeat to select multiple sessions")
+    parser.add_argument("--task", action="append",
+                        help="diagnostic task id; repeat to select multiple tasks")
+    parser.add_argument("--task-type", action="append", choices=("navigation", "manipulation", "qa"),
+                        help="diagnostic task type; repeat to select multiple types")
     parser.add_argument("--dry-run", action="store_true", help="inspect tasks without starting Isaac Sim")
     parser.add_argument("--max-steps", type=int, default=2000, help="maximum actions per embodied task")
     parser.add_argument("--agent-timeout", type=float, default=120.0,
@@ -288,11 +308,28 @@ def main() -> int:
     parser.add_argument("--holoagent-pose-topic", default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.pose)
     parser.add_argument("--holoagent-frame-id", default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.frame_id)
     parser.add_argument("--holoagent-pose-frame-id", default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.pose_frame_id)
-    args = parser.parse_args()
+    parser.add_argument("--official", action="store_true",
+                        help="enforce the frozen, full-dataset evaluation profile")
+    args = parser.parse_args(argv)
     if args.agent_timeout <= 0:
         parser.error("--agent-timeout must be positive")
+    if args.official:
+        if args.scene or args.session or args.task or args.task_type:
+            parser.error("--official requires the complete dataset without selection filters")
+        if args.viewer or args.step_delay:
+            parser.error("--official runs headless without artificial step delay")
+        if args.max_steps != 2000 or args.agent_timeout != 120.0:
+            parser.error("--official requires --max-steps 2000 and --agent-timeout 120")
+        if args.horizontal_fov_degrees not in (None, 100.0):
+            parser.error("--official requires a 100 degree horizontal FOV")
+        if args.holoagent_sensors:
+            parser.error("--official does not enable adapter-specific ROS sensors")
 
     dataset = BenchmarkDataset(args.dataset)
+    if args.official:
+        subprocess.run([
+            sys.executable, str(ROOT / "scripts" / "validate_dataset.py"), str(dataset.root)
+        ], check=True)
     scenes = args.scene or dataset.scene_ids()
     unknown = sorted(set(scenes) - set(dataset.scene_ids()))
     if unknown:
@@ -305,6 +342,7 @@ def main() -> int:
     from isaacsim import SimulationApp
     app = SimulationApp({"headless": not args.viewer})
     overlay = None
+    summary_written = False
     overview_holder = {}
     try:
         logger = logging.getLogger("longterm_benchmark")
@@ -314,6 +352,9 @@ def main() -> int:
         handler = logging.FileHandler(output_root / "run.log", encoding="utf-8")
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(handler)
+        console = logging.StreamHandler(sys.stdout)
+        console.setFormatter(logging.Formatter("[benchmark] %(message)s"))
+        logger.addHandler(console)
         logger.info("benchmark_start dataset=%s scenes=%s agent=%s", dataset.root, scenes, args.agent_cmd)
         from .scenes.isaac_env import EnvConfig
         holoagent_sensor_topics = None
@@ -336,12 +377,30 @@ def main() -> int:
         width, height = camera_config.resolution
         focal_pixels = width / (2.0 * math.tan(
             math.radians(camera_config.horizontal_fov_degrees) / 2.0))
+        official_profile = {
+            "dataset_manifest_sha256": _digest(dataset.root / "dataset_manifest.json"),
+            "dataset_tree_sha256": _dataset_digest(dataset.root),
+            "scene_ids": scenes,
+            "session_filter": args.session,
+            "task_filter": args.task,
+            "task_type_filter": args.task_type,
+            "max_steps_per_task": args.max_steps,
+            "agent_timeout_seconds": args.agent_timeout,
+            "session_start_pose_mode": args.session_start_pose_mode,
+            "camera_resolution": list(camera_config.resolution),
+            "horizontal_fov_degrees": camera_config.horizontal_fov_degrees,
+            "protocol_version": PROTOCOL_VERSION,
+        }
+        official_profile_sha256 = hashlib.sha256(json.dumps(
+            official_profile, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
         run_config = {
             "schema_version": 1,
             "protocol_version": PROTOCOL_VERSION,
             "dataset_id": dataset.manifest.get("dataset_id"),
             "dataset_root": str(dataset.root),
             "dataset_manifest_sha256": _digest(dataset.root / "dataset_manifest.json"),
+            "dataset_tree_sha256": official_profile["dataset_tree_sha256"],
             "scene_ids": scenes,
             "agent_command": args.agent_cmd,
             "agent_timeout_seconds": args.agent_timeout,
@@ -356,6 +415,9 @@ def main() -> int:
             "run_timestamp": run_timestamp,
             "run_directory": str(output_root),
             "agent_name": _agent_name(args.agent_cmd),
+            "official": bool(args.official),
+            "evaluation_profile": official_profile,
+            "evaluation_profile_sha256": official_profile_sha256,
             "camera": {"resolution": list(camera_config.resolution),
                         "horizontal_fov_degrees": camera_config.horizontal_fov_degrees,
                         "focal_length_mm": camera_config.focal_length_mm,
@@ -408,6 +470,8 @@ def main() -> int:
                     )
                 ) if args.viewer else None,
                 session_start_pose_mode=args.session_start_pose_mode,
+                task_ids=set(args.task) if args.task else None,
+                task_types=set(args.task_type) if args.task_type else None,
                 log_callback=lambda message: logger.info(message),
             )
             factory = _make_env_factory(dataset, app, viewer=args.viewer,
@@ -415,8 +479,19 @@ def main() -> int:
                                         camera_config=camera_config,
                                         holoagent_sensor_topics=holoagent_sensor_topics)
             for scene_id in scenes:
-                runner.run_scene(scene_id, dataset.sessions(scene_id), dataset.canonical_state(scene_id), factory)
+                all_sessions = dataset.sessions(scene_id)
+                selected = ([item for item in all_sessions if item.session_id in set(args.session)]
+                            if args.session else all_sessions)
+                if args.session and not selected:
+                    raise ValueError(f"none of the requested sessions exist in {scene_id}: {args.session}")
+                initial_state = dataset.canonical_state(scene_id)
+                if selected:
+                    first_index = all_sessions.index(selected[0])
+                    for prior in all_sessions[:first_index]:
+                        initial_state = compose_session_state(initial_state, prior.mutation())
+                runner.run_scene(scene_id, selected, initial_state, factory)
             write_summary(dataset, output_root)
+            summary_written = True
         logger.info("benchmark_complete output=%s", output_root)
     except BaseException:
         if 'logger' in locals():
@@ -424,6 +499,12 @@ def main() -> int:
         traceback.print_exc()
         return 1
     finally:
+        if not summary_written and 'output_root' in locals():
+            try:
+                write_summary(dataset, output_root)
+            except Exception:
+                if 'logger' in locals():
+                    logger.exception("summary_write_failed")
         if overlay is not None:
             overlay.close()
         overview = overview_holder.get("window")

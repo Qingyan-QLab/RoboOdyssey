@@ -6,43 +6,43 @@
   "visible_to_agent": false,
   "changes": [
     {
-      "object_id": "livingRoom1_photoFrame004",
+      "object_id": "studyRoom1_book242",
       "change_type": "support_or_region_change",
       "pose_before": {
         "coordinate_frame": "world",
         "position": [
-          24.282409799826713,
-          -8.457897471098192,
-          0.557419
+          18.949246060445905,
+          -2.9555912574920655,
+          2.37737
         ],
         "orientation": [
           0.0,
           0.0,
-          0.7071067341080643,
-          0.7071068282650276
+          0.0,
+          1.0
         ]
       },
       "pose_after": {
         "coordinate_frame": "world",
         "position": [
-          22.2403024,
-          -11.196467733333334,
-          0.557419
+          21.65130234,
+          -6.41740028,
+          2.37737
         ],
         "orientation": [
           0.0,
           0.0,
-          0.7071067341080643,
-          0.7071068282650276
+          0.0,
+          1.0
         ]
       },
       "relation_before": {
-        "room_id": "livingRoom1",
+        "room_id": "studyRoom1",
         "support_object_id": null,
         "relation_type": "in_room"
       },
       "relation_after": {
-        "room_id": "balcony1",
+        "room_id": "livingRoom1",
         "support_object_id": null,
         "relation_type": "in_room"
       },

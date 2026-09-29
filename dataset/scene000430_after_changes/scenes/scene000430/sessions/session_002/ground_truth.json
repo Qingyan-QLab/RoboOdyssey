@@ -1421,6 +1421,38 @@
     {
       "task_id": "qa_002",
       "task_type": "qa",
+      "task_family": "navigation_qa",
+      "target": {
+        "object_ids": [
+          "bathroom2_toilet_1419968_yflib039"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "bathroom",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "bathroom"
+        ]
+      },
+      "evidence": {
+        "type": "object_room",
+        "object_id": "bathroom2_toilet_1419968_yflib039",
+        "room_id": "bathroom2"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "navigation_001"
+      ]
+    },
+    {
+      "task_id": "qa_003",
+      "task_type": "qa",
       "task_family": "spatial_relation_qa",
       "target": {
         "object_ids": [
@@ -1441,38 +1473,6 @@
       "evidence": {
         "type": "object_room",
         "object_id": "bathroom1_toilet_1419968_yflib037",
-        "room_id": "bathroom1"
-      },
-      "success_criteria": {
-        "comparison": "accepted_answer"
-      },
-      "depends_on": [
-        "navigation_001"
-      ]
-    },
-    {
-      "task_id": "qa_003",
-      "task_type": "qa",
-      "task_family": "spatial_relation_qa",
-      "target": {
-        "object_ids": [
-          "bathroom1_bathroomcabinet_1504987_yflib038"
-        ],
-        "room_ids": [
-          "bathroom1"
-        ]
-      },
-      "preconditions": [],
-      "expected_outcome": {
-        "answer": "bathroom",
-        "answer_type": "free_text",
-        "accepted_answers": [
-          "bathroom"
-        ]
-      },
-      "evidence": {
-        "type": "object_room",
-        "object_id": "bathroom1_bathroomcabinet_1504987_yflib038",
         "room_id": "bathroom1"
       },
       "success_criteria": {

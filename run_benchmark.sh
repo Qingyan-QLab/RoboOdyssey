@@ -63,7 +63,7 @@ done
 cd "${BENCHMARK_ROOT}"
 export PYTHONPATH="${ISAACSIM_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 exec "${PYTHON_BIN}" -m benchmark.run \
-  --dataset "${DATASET_DIR:-${BENCHMARK_ROOT}/dataset/scene000430_new}" \
+  --dataset "${DATASET_DIR:-${BENCHMARK_ROOT}/dataset/scene000430_after_changes}" \
   --agent-cmd "${AGENT_CMD:-python3 ${BENCHMARK_ROOT}/examples/random_agent.py}" \
   --output "${OUTPUT_DIR:-${BENCHMARK_ROOT}/results}" \
   "${@}"

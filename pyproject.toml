@@ -7,7 +7,7 @@ name = "longterm-indoor-benchmark"
 version = "0.1.0"
 description = "Long-horizon VLN evaluation harness for Isaac Sim"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.23"]
+dependencies = ["numpy>=1.23", "Pillow>=9.0"]
 
 [tool.setuptools.packages.find]
 include = ["benchmark*"]

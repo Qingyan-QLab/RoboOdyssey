@@ -20,13 +20,19 @@ import argparse
 import json
 from http.server import ThreadingHTTPServer
 import math
+import os
 from pathlib import Path
+import re
 import sys
 from typing import Any
 from urllib import error, request
 
 try:
     from examples.holoagent_agent import normalize_response
+    from examples.openai_compatible_vlm_agent import (
+        Adapter as VisionLanguageAdapter,
+        LocalTransformersAdapter,
+    )
     from examples.holoagent_sim_gateway import (
         GatewayHandler,
         RosBridgeNode,
@@ -36,6 +42,10 @@ try:
 except ModuleNotFoundError:  # direct ``python examples/<script>.py`` launch
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from examples.holoagent_agent import normalize_response
+    from examples.openai_compatible_vlm_agent import (
+        Adapter as VisionLanguageAdapter,
+        LocalTransformersAdapter,
+    )
     from examples.holoagent_sim_gateway import (
         GatewayHandler,
         RosBridgeNode,
@@ -116,6 +126,14 @@ class FsrVlnPlanner:
                                  if isinstance(item, dict)).strip()
         return ""
 
+    @staticmethod
+    def _point_target(instruction: str) -> tuple[float, float] | None:
+        match = re.search(
+            r"\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)",
+            instruction,
+        )
+        return (float(match.group(1)), float(match.group(2))) if match else None
+
     def _query_target(self, instruction: str) -> None:
         if not instruction:
             return
@@ -153,7 +171,9 @@ class FsrVlnPlanner:
         # instead of caching a permanent no-op for the whole task.
         if instruction and (instruction != self._task_instruction or self._target is None):
             self._task_instruction = instruction
-            self._query_target(instruction)
+            self._target = self._point_target(instruction)
+            if self._target is None:
+                self._query_target(instruction)
         if self._target is None:
             return {"action": {"action": "no_op"}, "done": False,
                     "gateway_status": "fsr_vln_target_unresolved"}
@@ -192,42 +212,56 @@ class LiveOvoPlanner:
         self._turn_threshold = math.radians(max(1.0, float(turn_threshold_degrees)))
         self._task_instruction: str | None = None
         self._target: tuple[float, float] | None = None
+        self._candidate_object_id: int | None = None
+        self._attempted_object_ids: set[int] = set()
+        self._awaiting_candidate_check = False
+        self._exploration_steps = 0
 
     def _query_target(self, instruction: str) -> None:
-        detector = self.mapper.obj_detect_track
-        slam = self.mapper.slam_backbone
-        if detector is None or slam is None:
+        try:
+            detector = self.mapper.obj_detect_track
+            slam = self.mapper.slam_backbone
+            if detector is None or slam is None:
+                self._target = None
+                return
+            with detector.objects_lock:
+                objects = list(detector.objects.values())
+                if not objects:
+                    self._target = None
+                    return
+                scores = detector.query([instruction])
+                ranked = scores[0].argsort(descending=True).detach().cpu().tolist()
+                best_index = next(
+                    (int(index) for index in ranked
+                     if int(index) < len(objects)
+                     and int(objects[int(index)].id) not in self._attempted_object_ids),
+                    None,
+                )
+                if best_index is None:
+                    self._target = None
+                    return
+                object_id = int(objects[best_index].id)
+                points, _, point_object_ids = slam.get_map()
+                points_np = (points.detach().cpu().numpy()
+                             if hasattr(points, "detach") else points)
+                ids_np = (point_object_ids.detach().cpu().numpy()
+                           if hasattr(point_object_ids, "detach") else point_object_ids)
+                ids_np = ids_np.reshape(-1).tolist() if hasattr(ids_np, "reshape") else list(ids_np)
+                selected = [point for point, value in zip(points_np, ids_np)
+                            if int(value) == object_id]
+                if not selected:
+                    self._target = None
+                    return
+                self._target = (
+                    sum(float(point[0]) for point in selected) / len(selected),
+                    sum(float(point[1]) for point in selected) / len(selected),
+                )
+                self._candidate_object_id = object_id
+                self._awaiting_candidate_check = False
+        except Exception:
+            # The online map is updated concurrently; an incomplete snapshot
+            # means "not resolved yet", not a failed protocol request.
             self._target = None
-            return
-        with detector.objects_lock:
-            objects = list(detector.objects.values())
-            if not objects:
-                self._target = None
-                return
-            scores = detector.query([instruction])
-            best_index = int(scores[0].argmax().item())
-            if best_index >= len(objects):
-                self._target = None
-                return
-            object_id = int(objects[best_index].id)
-            points, _, point_object_ids = slam.get_map()
-            points_np = (points.detach().cpu().numpy()
-                         if hasattr(points, "detach") else points)
-            ids_np = (point_object_ids.detach().cpu().numpy()
-                       if hasattr(point_object_ids, "detach") else point_object_ids)
-            if hasattr(ids_np, "reshape"):
-                ids_np = ids_np.reshape(-1).tolist()
-            else:
-                ids_np = list(ids_np)
-            selected = [point for point, value in zip(points_np, ids_np)
-                        if int(value) == object_id]
-            if not selected:
-                self._target = None
-                return
-            self._target = (
-                sum(float(point[0]) for point in selected) / len(selected),
-                sum(float(point[1]) for point in selected) / len(selected),
-            )
 
     def _status(self) -> dict[str, Any]:
         """Expose mapper readiness without exposing model internals."""
@@ -249,6 +283,10 @@ class LiveOvoPlanner:
         if request_type == "session_start":
             self._task_instruction = None
             self._target = None
+            self._candidate_object_id = None
+            self._attempted_object_ids.clear()
+            self._awaiting_candidate_check = False
+            self._exploration_steps = 0
             return {"memory_update": {"holoagent_planner": "live_ovo_ready"}}
         if request_type == "qa":
             return {"answer": ""}
@@ -259,12 +297,20 @@ class LiveOvoPlanner:
                     "gateway_status": "live_ovo_navigation_only"}
         status = self._status()
         instruction = FsrVlnPlanner._instruction_text(payload.get("instruction"))
+        if instruction != self._task_instruction:
+            self._task_instruction = instruction
+            self._target = None
+            self._candidate_object_id = None
+            self._attempted_object_ids.clear()
+            self._awaiting_candidate_check = False
+            self._exploration_steps = 0
         # Mapping is asynchronous: the first step can arrive before the
         # mapper has produced its first OVO instance. Retry while unresolved
         # instead of caching a permanent no-op for the whole task.
-        if instruction and (instruction != self._task_instruction or self._target is None):
-            self._task_instruction = instruction
-            self._query_target(instruction)
+        if instruction and self._target is None:
+            self._target = FsrVlnPlanner._point_target(instruction)
+            if self._target is None:
+                self._query_target(instruction)
         if self._target is None:
             if status["mapper_initialization_error"] or status["mapper_processing_error"]:
                 unresolved_status = "live_ovo_mapper_error"
@@ -272,7 +318,12 @@ class LiveOvoPlanner:
                 unresolved_status = "live_ovo_waiting_for_sensor_frames"
             else:
                 unresolved_status = "live_ovo_target_unresolved"
-            return {"action": {"action": "no_op"}, "done": False,
+            self._exploration_steps += 1
+            if self._exploration_steps % 12 == 0:
+                action = {"action": "move_forward", "distance": self._max_segment}
+            else:
+                action = {"action": "turn_left", "angle_degrees": 30.0}
+            return {"action": action, "done": False,
                     "gateway_status": unresolved_status,
                     **status}
         pose = (payload.get("observation") or {}).get("pose")
@@ -284,8 +335,22 @@ class LiveOvoPlanner:
         dx, dy = self._target[0] - position[0], self._target[1] - position[1]
         distance = math.hypot(dx, dy)
         if distance <= self._tolerance:
+            # One no-op lets the benchmark evaluate arrival. If it asks for
+            # another step, this was a false semantic match: exclude that OVO
+            # instance and continue searching instead of idling indefinitely.
+            if self._candidate_object_id is not None and self._awaiting_candidate_check:
+                self._attempted_object_ids.add(self._candidate_object_id)
+                self._candidate_object_id = None
+                self._target = None
+                self._awaiting_candidate_check = False
+                self._exploration_steps += 1
+                return {"action": {"action": "turn_left", "angle_degrees": 30.0},
+                        "done": False, "gateway_status": "false_candidate_rejected",
+                        **status}
+            self._awaiting_candidate_check = True
             return {"action": {"action": "no_op"}, "done": False,
-                    "gateway_status": "target_reached", "target": list(self._target)}
+                    "gateway_status": "candidate_reached_pending_evaluation",
+                    "target": list(self._target)}
         error_angle = (math.atan2(dy, dx) - yaw + math.pi) % (2.0 * math.pi) - math.pi
         if abs(error_angle) > self._turn_threshold:
             return {"action": {"action": "turn_left" if error_angle > 0 else "turn_right",
@@ -296,6 +361,211 @@ class LiveOvoPlanner:
                             "distance": min(distance, self._max_segment)},
                 "done": False, "gateway_status": "target_tracking",
                 "target": list(self._target)}
+
+
+class DirectOvoPlanner(LiveOvoPlanner):
+    """Feed protocol RGB-D/pose into HoloAgent OVO without ROS bindings."""
+
+    @staticmethod
+    def _array(value: Any) -> Any | None:
+        if not isinstance(value, dict) or value.get("encoding") != "base64":
+            return None
+        import base64
+        import numpy as np
+        array = np.frombuffer(base64.b64decode(value["data"]), dtype=np.dtype(value["dtype"]))
+        return array.reshape(value["shape"])
+
+    def _ingest(self, payload: dict[str, Any]) -> None:
+        import numpy as np
+        observation = payload.get("observation") or {}
+        rgb = self._array((observation.get("images") or {}).get("front"))
+        depth = self._array(observation.get("depth"))
+        pose = observation.get("pose") or {}
+        position, quaternion = pose.get("position"), pose.get("orientation")
+        if rgb is None or depth is None or not position or not quaternion:
+            return
+        x, y, z, w = (float(item) for item in quaternion)
+        c2w = np.eye(4, dtype=np.float32)
+        c2w[:3, :3] = [[1-2*y*y-2*z*z, 2*x*y-2*z*w, 2*x*z+2*y*w],
+                       [2*x*y+2*z*w, 1-2*x*x-2*z*z, 2*y*z-2*x*w],
+                       [2*x*z-2*y*w, 2*y*z+2*x*w, 1-2*x*x-2*y*y]]
+        c2w[:3, 3] = np.asarray(position[:3], dtype=np.float32)
+        self.mapper.submit_frame(rgb[..., :3], depth, c2w)
+
+    def plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("type") == "step":
+            self._ingest(payload)
+        return super().plan(payload)
+
+
+_PRIVATE_KEYS = frozenset({
+    "ground_truth", "private", "expected_outcome", "reference_trajectory",
+    "reference_pose", "target_references", "canonical_state", "mutation",
+})
+
+
+def assert_public_agent_request(value: Any, path: str = "request") -> None:
+    """Reject accidental benchmark-private data before it reaches a model."""
+    if isinstance(value, dict):
+        leaked = _PRIVATE_KEYS.intersection(value)
+        if leaked:
+            raise ValueError(f"private benchmark field at {path}: {sorted(leaked)[0]}")
+        for key, item in value.items():
+            assert_public_agent_request(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            assert_public_agent_request(item, f"{path}[{index}]")
+
+
+class ManipulationStateMachine:
+    """Add closed-loop manipulation guards around a general VLM policy."""
+
+    def __init__(self, vlm: Any) -> None:
+        self.vlm = vlm
+        self.task_id: str | None = None
+        self.recovery_turns = 0
+
+    @staticmethod
+    def _normalized(value: Any) -> str:
+        text = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(value)).casefold()
+        text = re.sub(r"([a-z])([0-9])", r"\1 \2", text)
+        return " ".join(part for part in re.split(r"[^a-z0-9]+", text) if part)
+
+    @classmethod
+    def _words(cls, value: Any) -> set[str]:
+        return set(cls._normalized(value).split())
+
+    def _destination_room(self, payload: dict[str, Any]) -> str | None:
+        instruction = str(payload.get("instruction", ""))
+        normalized = self._normalized(instruction)
+        matches = []
+        rooms = (payload.get("session_instruction") or {}).get("rooms", [])
+        for room in rooms if isinstance(rooms, list) else []:
+            room_id = str(room.get("room_id", ""))
+            phrase = self._normalized(room_id)
+            position = normalized.rfind(phrase)
+            if phrase and position >= 0:
+                matches.append((position, room_id))
+        return max(matches)[1] if matches else None
+
+    def _reachable_target(self, payload: dict[str, Any]) -> str | None:
+        instruction_words = self._words(payload.get("instruction", ""))
+        values = (payload.get("observation") or {}).get("nearby_manipulable_objects", [])
+        candidates = []
+        for item in values if isinstance(values, list) else []:
+            if not isinstance(item, dict) or not item.get("reachable"):
+                continue
+            label_words = self._words(item.get("category")) | self._words(item.get("object_id"))
+            # Ignore room/index boilerplate and require a semantic noun match.
+            useful = label_words - {"room", "living", "master", "study", "bedroom",
+                                    "bathroom", "corridor", "kitchen", "balcony"}
+            score = len(useful & instruction_words)
+            if score:
+                candidates.append((-score, float(item.get("distance_m", 999.0)),
+                                   str(item.get("object_id"))))
+        return min(candidates)[2] if candidates else None
+
+    def plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        task_id = str(payload.get("task_id", ""))
+        if task_id != self.task_id:
+            self.task_id, self.recovery_turns = task_id, 0
+        observation = payload.get("observation") or {}
+        previous = payload.get("previous_result") or {}
+        held = observation.get("held_object")
+        destination = self._destination_room(payload)
+
+        if held and destination and observation.get("room_id") == destination:
+            return {"action": {"action": "place", "room_id": destination},
+                    "done": False, "gateway_status": "manipulation_place"}
+        if not held:
+            target = self._reachable_target(payload)
+            if target:
+                return {"action": {"action": "pick", "object_id": target},
+                        "done": False, "gateway_status": "manipulation_pick"}
+
+        # A carried object cannot be moved through a closed doorway. Ask for
+        # the affordance explicitly before collision recovery/model actions so
+        # the door is visibly opened and the swept object remains physical.
+        if held:
+            nearby_doors = observation.get("nearby_doors") or []
+            closed_door = next(
+                (door for door in nearby_doors
+                 if isinstance(door, dict) and not door.get("open")
+                 and float(door.get("distance_m", 999.0)) <= 1.55),
+                None,
+            )
+            # The pickup transition is allowed to pre-open the nearest door;
+            # after that, only a collision at the door itself (<= 1 m) may
+            # trigger another open. This avoids opening unrelated nearby
+            # doors when a model is merely recovering from a wall collision.
+            collision_at_door = bool(previous.get("collision")) and (
+                closed_door is not None
+                and float(closed_door.get("distance_m", 999.0)) <= 1.0)
+            pickup_near_door = (not previous or previous.get("reason") == "picked") \
+                and closed_door is not None
+            if collision_at_door or pickup_near_door:
+                return {"action": {"action": "open", "object_id": closed_door["object_id"]},
+                        "done": False, "gateway_status": "manipulation_open_door"}
+
+        # Break the common forward/backward collision loop before consulting
+        # the model again. Alternating turns exposes new views to the VLM.
+        if previous.get("collision") or previous.get("reason") == "blocked":
+            self.recovery_turns += 1
+            return {"action": {"action": "turn_left" if self.recovery_turns % 2 else "turn_right",
+                                "angle_degrees": 45.0},
+                    "done": False, "gateway_status": "manipulation_collision_recovery"}
+
+        response = normalize_response(self.vlm.request(payload))
+        action = response["action"]
+        if action.get("action") == "place" and held and destination:
+            action["room_id"] = destination
+        response.setdefault("gateway_status", "manipulation_vlm")
+        return response
+
+
+class CompositeHoloAgentPlanner:
+    """Use HoloAgent spatial planning for navigation and a VLM for other skills."""
+
+    def __init__(self, navigation: Any | None, vlm: VisionLanguageAdapter | None) -> None:
+        self.navigation = navigation
+        self.vlm = vlm
+        self.manipulation = ManipulationStateMachine(vlm) if vlm is not None else None
+
+    def plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        assert_public_agent_request(payload)
+        request_type = payload.get("type")
+        if request_type == "session_start":
+            updates: dict[str, Any] = {}
+            if self.navigation is not None:
+                nav = self.navigation.plan(payload)
+                if isinstance(nav.get("memory_update"), dict):
+                    updates.update(nav["memory_update"])
+            if self.vlm is not None:
+                response = self.vlm.request(payload)
+                if isinstance(response.get("memory_update"), dict):
+                    updates.update(response["memory_update"])
+            return {"ok": True, "memory_update": updates}
+        if request_type == "step" and payload.get("task_type") == "navigation" \
+                and self.navigation is not None:
+            return self.navigation.plan(payload)
+        if request_type == "step" and payload.get("task_type") == "manipulation" \
+                and self.manipulation is not None:
+            return self.manipulation.plan(payload)
+        if self.vlm is not None:
+            response = self.vlm.request(payload)
+            return normalize_response(response) if request_type == "step" else response
+        if request_type == "qa":
+            return {"answer": "", "gateway_status": "qa_model_not_configured"}
+        return {"action": {"action": "no_op"}, "done": False,
+                "gateway_status": "skill_model_not_configured"}
+
+
+class RemoteProtocolAdapter:
+    def __init__(self, endpoint: str, timeout: float = 300.0) -> None:
+        self.endpoint, self.timeout = endpoint, timeout
+
+    def request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return _post_json(self.endpoint, payload, self.timeout)
 
 
 def _start_live_ovo(args: argparse.Namespace) -> tuple[LiveOvoPlanner, Any, Any]:
@@ -357,6 +627,36 @@ def _start_live_ovo(args: argparse.Namespace) -> tuple[LiveOvoPlanner, Any, Any]
     thread.start()
     return LiveOvoPlanner(mapper, tolerance_m=args.position_tolerance_m,
                           max_segment_m=args.max_segment_m), mapper, rclpy
+
+
+def _start_direct_ovo(args: argparse.Namespace) -> tuple[DirectOvoPlanner, Any]:
+    root = Path(args.mapping_root).expanduser().resolve()
+    sys.path.insert(0, str(root))
+    from ovo.entities.semantic_mapping_online import SemanticMapping
+    from ovo.utils import io_utils
+    config_path = Path(args.mapping_config)
+    if not config_path.is_absolute():
+        config_path = root / config_path
+    config = io_utils.load_config(str(config_path))
+    config["device"] = args.mapping_device or "cuda:0"
+    config["use_wandb"] = False
+    config.setdefault("semantic", {}).setdefault("sam", {})["sam_ckpt_path"] = str(
+        root.parents[1] / "VLN" / "vln_tmp" / "mapdsg" / "checkpoints" / "sam2")
+    config.setdefault("slam", {})["slam_module"] = "vanilla"
+    config.setdefault("data", {}).update(
+        scene_name=args.mapping_scene, dataset_name="Benchmark", H=256, W=256)
+    focal = 128.0 / math.tan(math.radians(100.0) / 2.0)
+    config.setdefault("cam", {}).update(
+        H=256, W=256, fx=focal, fy=focal, cx=127.5, cy=127.5,
+        depth_scale=1.0, depth_th=10.0)
+    output = Path(args.mapping_output).expanduser().resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    mapper = SemanticMapping(config, str(output), scene=args.mapping_scene, direct=True)
+    if mapper.initialization_error:
+        raise RuntimeError(f"HoloAgent direct OVO initialization failed: {mapper.initialization_error}")
+    mapper.start_direct()
+    return DirectOvoPlanner(mapper, tolerance_m=args.position_tolerance_m,
+                            max_segment_m=args.max_segment_m), mapper
 def _post_json(url: str, value: dict[str, Any], timeout: float) -> dict[str, Any]:
     body = json.dumps(value, ensure_ascii=False).encode("utf-8")
     req = request.Request(url, data=body,
@@ -376,12 +676,13 @@ class PlannerGatewayHandler(GatewayHandler):
 
     planner_url: str | None = None
     planner_timeout: float = 30.0
-    fsr_planner: FsrVlnPlanner | None = None
+    fsr_planner: Any | None = None
 
     def _planner_response(self, body: dict[str, Any]) -> dict[str, Any] | None:
         value = body.get("request") if isinstance(body.get("request"), dict) else body
         if not isinstance(value, dict):
             raise ValueError("benchmark request must be an object")
+        assert_public_agent_request(value)
         if self.fsr_planner is not None:
             return self.fsr_planner.plan(value)
         if not self.planner_url:
@@ -406,6 +707,8 @@ class PlannerGatewayHandler(GatewayHandler):
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
                 self._write(400, {"success": False, "detail": str(exc)})
             except Exception as exc:
+                import traceback
+                traceback.print_exc()
                 self._write(502, {"success": False, "detail": str(exc)})
             return
         super().do_POST()
@@ -424,8 +727,21 @@ def main() -> int:
                         help="HoloAgent agentic_robot/fsr_vln directory")
     parser.add_argument("--fsr-use-hmsg-graph", action="store_true")
     parser.add_argument("--fsr-use-gpt", action="store_true")
+    parser.add_argument("--vlm-endpoint", default=os.getenv("VLM_BASE_URL"),
+                        help="OpenAI-compatible endpoint for manipulation, QA and memory")
+    parser.add_argument("--vlm-model", default=os.getenv("VLM_MODEL"))
+    parser.add_argument("--vlm-api-key", default=os.getenv("VLM_API_KEY"))
+    parser.add_argument("--vlm-timeout", type=float, default=120.0)
+    parser.add_argument("--vlm-planner-url",
+                        help="protocol endpoint used for QA/manipulation/memory")
+    parser.add_argument("--local-vlm-model",
+                        help="local Hugging Face multimodal checkpoint; no API required")
+    parser.add_argument("--local-vlm-device", default="auto")
+    parser.add_argument("--local-vlm-max-new-tokens", type=int, default=256)
     parser.add_argument("--live-ovo", action="store_true",
                         help="run HoloAgent semantic_mapping_online.py in this process")
+    parser.add_argument("--direct-ovo", action="store_true",
+                        help="run HoloAgent OVO directly from protocol RGB-D")
     parser.add_argument("--mapping-root",
                         help="HoloAgent agentic_robot/fsr_vln directory")
     parser.add_argument("--mapping-config", default="configs/ovo_zed.yaml")
@@ -444,8 +760,15 @@ def main() -> int:
     args = parser.parse_args()
     if args.planner_timeout <= 0:
         parser.error("--planner-timeout must be positive")
-    if sum(bool(value) for value in (args.planner_url, args.fsr_config, args.live_ovo)) > 1:
-        parser.error("use only one of --planner-url, --fsr-config, or --live-ovo")
+    if bool(args.vlm_endpoint) != bool(args.vlm_model):
+        parser.error("--vlm-endpoint and --vlm-model must be supplied together")
+    if args.local_vlm_model and args.vlm_endpoint:
+        parser.error("use only one of --local-vlm-model or --vlm-endpoint")
+    if args.vlm_planner_url and (args.local_vlm_model or args.vlm_endpoint):
+        parser.error("use only one VLM backend")
+    if sum(bool(value) for value in (args.planner_url, args.fsr_config,
+                                     args.live_ovo, args.direct_ovo)) > 1:
+        parser.error("use only one navigation backend")
     if args.live_ovo and args.ros:
         parser.error("--live-ovo already owns the ROS context; omit --ros")
     fsr_planner = None
@@ -462,6 +785,23 @@ def main() -> int:
     live_rclpy = None
     if args.live_ovo:
         fsr_planner, live_mapper, live_rclpy = _start_live_ovo(args)
+    if args.direct_ovo:
+        if not args.mapping_root:
+            parser.error("--direct-ovo requires --mapping-root")
+        fsr_planner, live_mapper = _start_direct_ovo(args)
+    if args.vlm_planner_url:
+        vlm = RemoteProtocolAdapter(args.vlm_planner_url, args.vlm_timeout)
+    elif args.local_vlm_model:
+        vlm = LocalTransformersAdapter(
+            args.local_vlm_model, args.local_vlm_device,
+            args.local_vlm_max_new_tokens,
+        )
+    else:
+        vlm = (VisionLanguageAdapter(args.vlm_endpoint, args.vlm_model,
+                                     args.vlm_api_key, args.vlm_timeout)
+               if args.vlm_endpoint else None)
+    if fsr_planner is not None or vlm is not None:
+        fsr_planner = CompositeHoloAgentPlanner(fsr_planner, vlm)
     state = SimGatewayState(
         command_wait_s=max(0.0, args.command_wait_ms / 1000.0),
         position_tolerance_m=args.position_tolerance_m,
@@ -484,8 +824,7 @@ def main() -> int:
     if args.planner_url:
         print(f"planner endpoint: {args.planner_url}", flush=True)
     elif fsr_planner is not None:
-        print("planner: built-in live OVO planner" if args.live_ovo
-              else "planner: built-in FSR-VLN target planner", flush=True)
+        print("planner: HoloAgent composite navigation/manipulation/QA", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -498,7 +837,8 @@ def main() -> int:
         if live_mapper is not None:
             try:
                 live_mapper.shutdown_event.set()
-                live_mapper.destroy_node()
+                if hasattr(live_mapper, "destroy_node"):
+                    live_mapper.destroy_node()
             finally:
                 if live_rclpy is not None and live_rclpy.ok():
                     live_rclpy.shutdown()

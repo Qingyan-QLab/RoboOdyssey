@@ -28,6 +28,13 @@ ACTION_NAMES = {
     "open", "close", "reset",
 }
 
+_ACTION_ALIASES = {
+    "forward": "move_forward", "backward": "move_backward",
+    "left": "turn_left", "right": "turn_right", "rotate_left": "turn_left",
+    "rotate_right": "turn_right", "pickup": "pick", "pick_up": "pick",
+    "put_down": "place", "drop": "place", "stop": "no_op", "wait": "no_op",
+}
+
 
 def _post_json(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -82,6 +89,18 @@ def normalize_response(value: dict[str, Any]) -> dict[str, Any]:
         action = {"action": "no_op"}
     if isinstance(action, str):
         action = {"action": action}
+    if isinstance(action, dict):
+        action = dict(action)
+        name = str(action.get("action", "")).strip().lower().replace(" ", "_")
+        action["action"] = _ACTION_ALIASES.get(name, name)
+        arguments = action.pop("arguments", None) or action.pop("parameters", None)
+        if isinstance(arguments, dict):
+            for key, item in arguments.items():
+                action.setdefault(key, item)
+        if action["action"] in {"pick", "open", "close"} and not action.get("object_id"):
+            action["object_id"] = action.get("target") or action.get("object")
+        if action["action"] == "place" and not action.get("room_id"):
+            action["room_id"] = action.get("location") or action.get("target")
     if not isinstance(action, dict) or action.get("action") not in ACTION_NAMES:
         raise RuntimeError(f"HoloAgent returned unsupported action: {action!r}")
     response["action"] = action

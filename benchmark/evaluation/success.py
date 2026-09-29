@@ -72,8 +72,10 @@ def evaluate_embodied_task(
         collision_ok = bool(criteria.get("collision_allowed", False)) or collisions == 0
         reference = ground_truth.get("reference_trajectory", {})
         path_length = sum(
-            _distance(a.get("after", {}).get("position", [])[:2], b.get("after", {}).get("position", [])[:2])
-            for a, b in zip(events, events[1:])
+            _distance(before[:2], after[:2])
+            for event in events
+            if (before := event.get("before", {}).get("position"))
+            and (after := event.get("after", {}).get("position"))
         )
         shortest = float(reference.get("length_m", 0.0))
         required_order = criteria.get("required_site_order") or []
@@ -116,9 +118,13 @@ def evaluate_embodied_task(
             elif relation_type in {"on", "supported_by"}:
                 passed = actual.get("support_object_id") == relation.get("object_id")
             else:
-                passed = False
+                passed = not relation
             if change.get("state_after") is not None:
-                passed = passed and actual.get("state") == change["state_after"]
+                expected_state = change["state_after"]
+                if expected_state in {"open", "closed"}:
+                    passed = passed and bool(actual.get("door_open")) == (expected_state == "open")
+                else:
+                    passed = passed and actual.get("state") == expected_state
             checks.append({"object_id": change.get("object_id"), "success": passed})
         return {"success": bool(checks) and all(item["success"] for item in checks),
                 "checks": checks, "steps": len(events)}
@@ -128,5 +134,5 @@ def evaluate_embodied_task(
 def evaluate_qa(prediction: Any, ground_truth: dict[str, Any]) -> dict[str, Any]:
     outcome = ground_truth.get("expected_outcome", {})
     metrics = score_qa(prediction, outcome.get("answer", ""), outcome.get("accepted_answers", []))
-    metrics["success"] = bool(metrics["exact_match"])
+    metrics["success"] = bool(metrics["semantic_match"])
     return metrics

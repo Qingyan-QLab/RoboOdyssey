@@ -621,7 +621,7 @@
     {
       "task_id": "qa_002",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "target": {
         "object_ids": [
           "bathroom2_toilet_1419968_yflib039"
@@ -653,7 +653,7 @@
     {
       "task_id": "qa_003",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "target": {
         "object_ids": [
           "bathroom2_showerhead_1476568_yflib040"
@@ -688,7 +688,7 @@
       "task_family": "inspect_then_act",
       "target": {
         "object_ids": [
-          "livingRoom1_sugarCube003"
+          "livingRoom1_sugarCube004"
         ],
         "room_ids": [
           "livingRoom1",
@@ -697,7 +697,7 @@
       },
       "preconditions": [
         {
-          "object_id": "livingRoom1_sugarCube003",
+          "object_id": "livingRoom1_sugarCube004",
           "relation": "reachable",
           "expected": true
         }
@@ -705,7 +705,7 @@
       "expected_outcome": {
         "state_changes": [
           {
-            "object_id": "livingRoom1_sugarCube003",
+            "object_id": "livingRoom1_sugarCube004",
             "relation_before": {
               "type": "in_room",
               "room_id": "livingRoom1"
@@ -720,18 +720,18 @@
       "reference_actions": [
         {
           "action": "pick",
-          "object_id": "livingRoom1_sugarCube003"
+          "object_id": "livingRoom1_sugarCube004"
         },
         {
           "action": "place",
-          "object_id": "livingRoom1_sugarCube003",
+          "object_id": "livingRoom1_sugarCube004",
           "support_object_id": null,
           "room_id": "bathroom2"
         }
       ],
       "success_criteria": {
         "required_state_changes": [
-          "livingRoom1_sugarCube003"
+          "livingRoom1_sugarCube004"
         ],
         "placement_relation": "in_room",
         "position_tolerance_m": 0.05,
@@ -800,6 +800,42 @@
       },
       "depends_on": [
         "manipulation_004"
+      ]
+    },
+    {
+      "task_id": "qa_006",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "studyRoom1_book242"
+        ],
+        "room_ids": [
+          "studyRoom1",
+          "livingRoom1"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "book",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "book",
+          "studyRoom1_book242"
+        ]
+      },
+      "evidence": {
+        "type": "hidden_mutation",
+        "source_session_id": "session_000",
+        "object_id": "studyRoom1_book242",
+        "room_before": "studyRoom1",
+        "room_after": "livingRoom1"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "manipulation_005"
       ]
     }
   ]

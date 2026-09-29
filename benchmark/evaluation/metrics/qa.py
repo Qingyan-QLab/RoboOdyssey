@@ -19,4 +19,16 @@ def score_qa(prediction: Any, ground_truth: Any, accepted: list[Any] | None = No
             return {normalize_answer(x) for x in a} == {normalize_answer(x) for x in b}
         return normalize_answer(a) == normalize_answer(b)
     exact = any(equivalent(prediction, item) for item in candidates)
-    return {"exact_match": exact, "normalized_prediction": normalize_answer(prediction), "normalized_references": [normalize_answer(item) for item in candidates]}
+    normalized_prediction = normalize_answer(prediction)
+    references = [normalize_answer(item) for item in candidates]
+    # Deterministic semantic containment handles concise references such as
+    # "bathroom" versus a complete natural-language answer. Word boundaries
+    # prevent "book" from matching "bookshelf".
+    semantic = exact or any(
+        bool(reference) and re.search(rf"(?<!\w){re.escape(reference)}(?!\w)",
+                                      normalized_prediction) is not None
+        for reference in references
+    )
+    return {"exact_match": exact, "semantic_match": semantic,
+            "normalized_prediction": normalized_prediction,
+            "normalized_references": references}

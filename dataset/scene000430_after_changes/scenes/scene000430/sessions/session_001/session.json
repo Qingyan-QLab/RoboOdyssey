@@ -110,7 +110,7 @@
           "bathroom2"
         ]
       },
-      "question": "Which room contains the toilet in the bathroom?",
+      "question": "What type of room contains the toilet in the bathroom?",
       "answer_type": "free_text",
       "target_references": [
         {
@@ -210,6 +210,54 @@
             }
           ],
           "candidate_count": 1,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "qa_006",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "capabilities": [
+        "qa",
+        "memory",
+        "change_detection"
+      ],
+      "depends_on": [
+        "manipulation_005"
+      ],
+      "target": {
+        "object_ids": [
+          "studyRoom1_book206"
+        ],
+        "room_ids": [
+          "studyRoom1",
+          "kitchen1"
+        ]
+      },
+      "question": "Which previously encountered object is no longer in the studyRoom1?",
+      "answer_type": "free_text",
+      "target_references": [
+        {
+          "object_id": "studyRoom1_book206",
+          "text": "book in the study near the book",
+          "rules": [
+            {
+              "type": "category",
+              "value": "book"
+            },
+            {
+              "type": "room",
+              "room_id": "studyRoom1",
+              "value": "study"
+            },
+            {
+              "type": "near",
+              "object_id": "studyRoom1_book207",
+              "distance_max_m": 0.028
+            }
+          ],
+          "candidate_count": 137,
           "uniqueness": "verified"
         }
       ]

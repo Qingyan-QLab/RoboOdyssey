@@ -871,38 +871,6 @@
       "task_family": "navigation_qa",
       "target": {
         "object_ids": [
-          "studyRoom1_bookshelf_1509243_yflib032"
-        ],
-        "room_ids": [
-          "studyRoom1"
-        ]
-      },
-      "preconditions": [],
-      "expected_outcome": {
-        "answer": "study",
-        "answer_type": "free_text",
-        "accepted_answers": [
-          "study"
-        ]
-      },
-      "evidence": {
-        "type": "object_room",
-        "object_id": "studyRoom1_bookshelf_1509243_yflib032",
-        "room_id": "studyRoom1"
-      },
-      "success_criteria": {
-        "comparison": "accepted_answer"
-      },
-      "depends_on": [
-        "navigation_001"
-      ]
-    },
-    {
-      "task_id": "qa_003",
-      "task_type": "qa",
-      "task_family": "spatial_relation_qa",
-      "target": {
-        "object_ids": [
           "bathroom2_toilet_1419968_yflib039"
         ],
         "room_ids": [
@@ -920,6 +888,38 @@
       "evidence": {
         "type": "object_room",
         "object_id": "bathroom2_toilet_1419968_yflib039",
+        "room_id": "bathroom2"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "navigation_001"
+      ]
+    },
+    {
+      "task_id": "qa_003",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "bathroom2_showerhead_1476568_yflib040"
+        ],
+        "room_ids": [
+          "bathroom2"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "bathroom",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "bathroom"
+        ]
+      },
+      "evidence": {
+        "type": "object_room",
+        "object_id": "bathroom2_showerhead_1476568_yflib040",
         "room_id": "bathroom2"
       },
       "success_criteria": {
@@ -1045,6 +1045,42 @@
       },
       "depends_on": [
         "manipulation_004"
+      ]
+    },
+    {
+      "task_id": "qa_006",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "target": {
+        "object_ids": [
+          "masterBedroom1_storageBox002"
+        ],
+        "room_ids": [
+          "masterBedroom1",
+          "corridor1"
+        ]
+      },
+      "preconditions": [],
+      "expected_outcome": {
+        "answer": "storage box",
+        "answer_type": "free_text",
+        "accepted_answers": [
+          "storage box",
+          "masterBedroom1_storageBox002"
+        ]
+      },
+      "evidence": {
+        "type": "hidden_mutation",
+        "source_session_id": "session_003",
+        "object_id": "masterBedroom1_storageBox002",
+        "room_before": "masterBedroom1",
+        "room_after": "corridor1"
+      },
+      "success_criteria": {
+        "comparison": "accepted_answer"
+      },
+      "depends_on": [
+        "manipulation_005"
       ]
     }
   ]

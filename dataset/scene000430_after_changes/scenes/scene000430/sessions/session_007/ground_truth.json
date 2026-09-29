@@ -261,7 +261,7 @@
     {
       "task_id": "qa_002",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "target": {
         "object_ids": [
           "bathroom2_showerhead_1476568_yflib040"
@@ -293,7 +293,7 @@
     {
       "task_id": "qa_003",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "target": {
         "object_ids": [
           "bathroom2_toilet_1419968_yflib039"
@@ -387,7 +387,7 @@
       "task_family": "object_transfer",
       "target": {
         "object_ids": [
-          "livingRoom1_sugarCube004"
+          "livingRoom1_sugarCube003"
         ],
         "room_ids": [
           "livingRoom1",
@@ -396,7 +396,7 @@
       },
       "preconditions": [
         {
-          "object_id": "livingRoom1_sugarCube004",
+          "object_id": "livingRoom1_sugarCube003",
           "relation": "reachable",
           "expected": true
         }
@@ -404,7 +404,7 @@
       "expected_outcome": {
         "state_changes": [
           {
-            "object_id": "livingRoom1_sugarCube004",
+            "object_id": "livingRoom1_sugarCube003",
             "relation_before": {
               "type": "in_room",
               "room_id": "livingRoom1"
@@ -419,18 +419,18 @@
       "reference_actions": [
         {
           "action": "pick",
-          "object_id": "livingRoom1_sugarCube004"
+          "object_id": "livingRoom1_sugarCube003"
         },
         {
           "action": "place",
-          "object_id": "livingRoom1_sugarCube004",
+          "object_id": "livingRoom1_sugarCube003",
           "support_object_id": null,
           "room_id": "bathroom2"
         }
       ],
       "success_criteria": {
         "required_state_changes": [
-          "livingRoom1_sugarCube004"
+          "livingRoom1_sugarCube003"
         ],
         "placement_relation": "in_room",
         "position_tolerance_m": 0.05,

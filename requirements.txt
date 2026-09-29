@@ -1,3 +1,4 @@
 # Isaac Sim supplies the simulator/runtime dependencies. These packages are
 # only for the benchmark loader, validation and optional bridges.
 numpy>=1.23
+Pillow>=9.0

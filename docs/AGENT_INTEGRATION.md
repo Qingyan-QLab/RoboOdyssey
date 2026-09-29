@@ -3,6 +3,11 @@
 模型进程通过 stdin/stdout 使用 JSONL Protocol v1。每行 stdout 必须是一个 JSON
 对象，日志写入 stderr。模型不能读取数据集中的 ground truth 文件。
 
+Gateway 会递归拒绝 `ground_truth`、`expected_outcome`、参考轨迹等私有字段。公开请求只含
+任务文本、相机观测、agent pose、动作反馈和 agent 自己此前写入的 memory。环境也不会在
+缺少对象参数时用隐藏任务目标补全 `pick`；可以发送视觉识别得到的语义名称，例如
+`{"action":"pick","target":"vase"}`，环境只在当前可达对象中解析该名称。
+
 ## 请求
 
 - session_start：包含 scene_id、session_id、session instruction、task IDs 和
@@ -57,3 +62,13 @@ open/close；接近并碰撞关闭的门时适配器会自动发出 open，并�
 pick 只能作用于 builder 的 pick/place candidate，且对象必须在 avatar 可达范围内。
 持有对象会显示在第一人称画面右下方，并随 avatar 移动。place 必须发生在 agent
 当前所在房间；对象随后解除附着，写入 session 的实际 state change。
+
+## HoloAgent 组合服务
+
+`holoagent_benchmark_server.py` 可以组合两个后端：
+
+- FSR-VLN 或 live OVO：导航目标定位与移动动作；
+- OpenAI-compatible VLM：视觉操作、QA，以及 `memory_update`。
+
+至少配置一个后端。完整能力运行时同时提供导航后端和 `--vlm-endpoint/--vlm-model`。
+没有对应后端的能力返回明确的 `*_not_configured` 状态并按失败计分。

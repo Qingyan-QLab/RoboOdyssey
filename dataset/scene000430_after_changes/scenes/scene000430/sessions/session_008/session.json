@@ -25,7 +25,7 @@
           "bathroom2"
         ]
       },
-      "instruction": "From (19.03, -7.06) metres, move -0.15 metres along world X and 1.35 metres along world Y.",
+      "instruction": "From your current position, move -0.15 metres along world X and 1.35 metres along world Y.",
       "reference_pose": {
         "coordinate_frame": "world",
         "position": [
@@ -65,7 +65,7 @@
           "bathroom1"
         ]
       },
-      "instruction": "From (26.43, -7.46) metres, move 0.70 metres along world X and 1.85 metres along world Y.",
+      "instruction": "From your current position, move 0.70 metres along world X and 1.85 metres along world Y.",
       "reference_pose": {
         "coordinate_frame": "world",
         "position": [
@@ -92,9 +92,11 @@
     {
       "task_id": "qa_002",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "navigation_001"
@@ -107,7 +109,7 @@
           "bathroom2"
         ]
       },
-      "question": "Which room contains the toilet in the bathroom?",
+      "question": "Which room contained the toilet in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
@@ -132,9 +134,11 @@
     {
       "task_id": "qa_003",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "qa_002"
@@ -147,7 +151,7 @@
           "bathroom2"
         ]
       },
-      "question": "Which room contains the shower in the bathroom?",
+      "question": "Which room contained the shower in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
@@ -183,7 +187,7 @@
       ],
       "target": {
         "object_ids": [
-          "livingRoom1_sugarCube003"
+          "livingRoom1_sugarCube004"
         ],
         "room_ids": [
           "livingRoom1",
@@ -193,12 +197,12 @@
       "instruction": "Check whether the sugar cube in the living room near the sugar cube is in the living room 1. If it is present, pick it up and place it in the bathroom 2; otherwise report that it is missing.",
       "condition": {
         "predicate": "object_in_room",
-        "object_id": "livingRoom1_sugarCube003",
+        "object_id": "livingRoom1_sugarCube004",
         "room_id": "livingRoom1"
       },
       "target_references": [
         {
-          "object_id": "livingRoom1_sugarCube003",
+          "object_id": "livingRoom1_sugarCube004",
           "text": "sugar cube in the living room near the sugar cube",
           "rules": [
             {
@@ -212,7 +216,7 @@
             },
             {
               "type": "near",
-              "object_id": "livingRoom1_sugarCube004",
+              "object_id": "livingRoom1_sugarCube003",
               "distance_max_m": 0.028
             }
           ],
@@ -263,6 +267,54 @@
             }
           ],
           "candidate_count": 2,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "qa_006",
+      "task_type": "qa",
+      "task_family": "spatial_relation_qa",
+      "capabilities": [
+        "qa",
+        "memory",
+        "change_detection"
+      ],
+      "depends_on": [
+        "manipulation_005"
+      ],
+      "target": {
+        "object_ids": [
+          "studyRoom1_book242"
+        ],
+        "room_ids": [
+          "studyRoom1",
+          "livingRoom1"
+        ]
+      },
+      "question": "Which previously encountered object is no longer in the studyRoom1?",
+      "answer_type": "free_text",
+      "target_references": [
+        {
+          "object_id": "studyRoom1_book242",
+          "text": "book in the study near the book",
+          "rules": [
+            {
+              "type": "category",
+              "value": "book"
+            },
+            {
+              "type": "room",
+              "room_id": "studyRoom1",
+              "value": "study"
+            },
+            {
+              "type": "near",
+              "object_id": "studyRoom1_book219",
+              "distance_max_m": 0.001
+            }
+          ],
+          "candidate_count": 137,
           "uniqueness": "verified"
         }
       ]

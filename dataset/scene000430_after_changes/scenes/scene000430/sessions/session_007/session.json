@@ -48,9 +48,11 @@
     {
       "task_id": "qa_002",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "navigation_001"
@@ -63,7 +65,7 @@
           "bathroom2"
         ]
       },
-      "question": "Which room contains the shower in the bathroom?",
+      "question": "Which room contained the shower in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
@@ -88,9 +90,11 @@
     {
       "task_id": "qa_003",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "qa_002"
@@ -103,7 +107,7 @@
           "bathroom2"
         ]
       },
-      "question": "Which room contains the toilet in the bathroom?",
+      "question": "Which room contained the toilet in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
@@ -184,7 +188,7 @@
       ],
       "target": {
         "object_ids": [
-          "livingRoom1_sugarCube004"
+          "livingRoom1_sugarCube003"
         ],
         "room_ids": [
           "livingRoom1",
@@ -194,7 +198,7 @@
       "instruction": "Pick up the sugar cube in the living room near the sugar cube in the living room 1, carry it to the bathroom 2, and place it there.",
       "target_references": [
         {
-          "object_id": "livingRoom1_sugarCube004",
+          "object_id": "livingRoom1_sugarCube003",
           "text": "sugar cube in the living room near the sugar cube",
           "rules": [
             {
@@ -208,7 +212,7 @@
             },
             {
               "type": "near",
-              "object_id": "livingRoom1_sugarCube003",
+              "object_id": "livingRoom1_sugarCube004",
               "distance_max_m": 0.028
             }
           ],

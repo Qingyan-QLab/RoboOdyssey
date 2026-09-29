@@ -25,7 +25,7 @@
           "masterBedroom1"
         ]
       },
-      "instruction": "From (24.68, -11.11) metres, move 2.15 metres along world X and 2.80 metres along world Y.",
+      "instruction": "From your current position, move 2.15 metres along world X and 2.80 metres along world Y.",
       "reference_pose": {
         "coordinate_frame": "world",
         "position": [
@@ -65,7 +65,7 @@
           "bathroom2"
         ]
       },
-      "instruction": "From (19.03, -7.06) metres, move -0.15 metres along world X and 1.35 metres along world Y.",
+      "instruction": "From your current position, move -0.15 metres along world X and 1.35 metres along world Y.",
       "reference_pose": {
         "coordinate_frame": "world",
         "position": [
@@ -137,36 +137,38 @@
     {
       "task_id": "qa_003",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "navigation_002"
       ],
       "target": {
         "object_ids": [
-          "masterBedroom1_storageBox002"
+          "bathroom2_toilet_1419968_yflib039"
         ],
         "room_ids": [
-          "masterBedroom1"
+          "bathroom2"
         ]
       },
-      "question": "Which room contains the storage box in the bedroom?",
+      "question": "Which room contained the toilet in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
-          "object_id": "masterBedroom1_storageBox002",
-          "text": "storage box in the bedroom",
+          "object_id": "bathroom2_toilet_1419968_yflib039",
+          "text": "toilet in the bathroom",
           "rules": [
             {
               "type": "category",
-              "value": "storage box"
+              "value": "toilet"
             },
             {
               "type": "room",
-              "room_id": "masterBedroom1",
-              "value": "bedroom"
+              "room_id": "bathroom2",
+              "value": "bathroom"
             }
           ],
           "candidate_count": 1,
@@ -186,22 +188,22 @@
       ],
       "target": {
         "object_ids": [
-          "masterBedroom1_wardrobe_1514486_yflib020"
+          "masterBedroom1_storageBox002"
         ],
         "room_ids": [
           "masterBedroom1"
         ]
       },
-      "question": "Which room contains the wardrobe in the bedroom?",
-      "answer_type": "free_text",
+      "question": "How many storage box objects are in the bedroom?",
+      "answer_type": "integer",
       "target_references": [
         {
-          "object_id": "masterBedroom1_wardrobe_1514486_yflib020",
-          "text": "wardrobe in the bedroom",
+          "object_id": "masterBedroom1_storageBox002",
+          "text": "storage box in the bedroom",
           "rules": [
             {
               "type": "category",
-              "value": "wardrobe"
+              "value": "storage box"
             },
             {
               "type": "room",

@@ -609,16 +609,18 @@
       },
       "preconditions": [],
       "expected_outcome": {
-        "answer": "study",
-        "answer_type": "free_text",
+        "answer": 137,
+        "answer_type": "integer",
         "accepted_answers": [
+          "137",
           "study"
         ]
       },
       "evidence": {
-        "type": "object_room",
-        "object_id": "studyRoom1_book242",
-        "room_id": "studyRoom1"
+        "type": "category_count",
+        "category": "book",
+        "room_id": "studyRoom1",
+        "count": 137
       },
       "success_criteria": {
         "comparison": "accepted_answer"

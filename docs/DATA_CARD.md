@@ -1,6 +1,6 @@
 # Data Card
 
-当前示例数据集：dataset/scene000430。
+当前示例数据集：dataset/scene000430_after_changes。
 
 - 1 个住宅场景；
 - 10 个 parent-linked sessions；
@@ -9,6 +9,7 @@
 - manipulation 是高层逻辑 pick/place，不代表机械臂物理抓取性能；
 - 评测数据是 synthetic scene package，暂无 train/validation/test split；
 - 语言任务文本为英文，场景分布和任务难度尚未完成公开基准校准。
+- 该单场景数据仅用于验证仓库可实施性，不代表正式 benchmark 的统计覆盖度。
 
 场景 USD、纹理和上游 ArchVis 资产的再分发必须经过逐项许可证审查。发布前使用
 scripts/make_checksums.py 生成 hash，并同步维护 NOTICE、来源和许可证清单。

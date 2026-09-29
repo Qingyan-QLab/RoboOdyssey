@@ -32,16 +32,42 @@ def write_summary(dataset: BenchmarkDataset, result_root: str | Path) -> dict[st
                     object_sessions[str(object_id)].append(index)
         for current_index, record in enumerate(records):
             path = result_root / "scenes" / scene_id / "sessions" / record.session_id / "metrics.json"
-            if not path.is_file():
-                continue
-            metrics = json.loads(path.read_text(encoding="utf-8"))
+            metrics = (json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {
+                "schema_version": 1,
+                "scene_id": scene_id,
+                "session_id": record.session_id,
+                "run_status": "missing",
+                "reset_count": 0,
+                "task_results": [],
+            })
+            existing = {str(item.get("task_id")): item
+                        for item in metrics.get("task_results", [])}
+            complete_results = []
+            for task in record.tasks:
+                task_id = str(task["task_id"])
+                result = existing.get(task_id)
+                if result is None:
+                    result = {
+                        "task_id": task_id,
+                        "task_type": task["task_type"],
+                        "task_family": task.get("task_family"),
+                        "capabilities": task.get("capabilities", []),
+                        "success": False,
+                        "metrics": {"reason": "missing_result"},
+                    }
+                complete_results.append(result)
+            metrics["task_results"] = complete_results
+            metrics["task_score"] = _rate(
+                [bool(item.get("success")) for item in complete_results]) or 0.0
+            metrics["success"] = bool(complete_results) and all(
+                bool(item.get("success")) for item in complete_results)
             sessions.append(metrics)
-            if metrics.get("run_status") == "interrupted":
+            if metrics.get("run_status") in {"interrupted", "missing"}:
                 interrupted += 1
             resets += int(metrics.get("reset_count", 0))
             authored = {str(task["task_id"]): task for task in record.tasks}
             private = {str(task["task_id"]): task for task in record.ground_truth()["tasks"]}
-            for result in metrics.get("task_results", []):
+            for result in complete_results:
                 success = bool(result.get("success"))
                 tasks.append(result)
                 by_type[str(result["task_type"])].append(success)

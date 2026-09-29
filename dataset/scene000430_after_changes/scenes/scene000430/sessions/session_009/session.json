@@ -120,9 +120,11 @@
     {
       "task_id": "qa_002",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "navigation_001"
@@ -135,7 +137,7 @@
           "bathroom2"
         ]
       },
-      "question": "Which room contains the toilet in the bathroom?",
+      "question": "Which room contained the toilet in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
@@ -160,9 +162,11 @@
     {
       "task_id": "qa_003",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "qa_002"
@@ -175,7 +179,7 @@
           "bathroom2"
         ]
       },
-      "question": "Which room contains the shower in the bathroom?",
+      "question": "Which room contained the shower in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
@@ -210,6 +214,52 @@
       ],
       "target": {
         "object_ids": [
+          "livingRoom1_photoFrame004"
+        ],
+        "room_ids": [
+          "livingRoom1",
+          "bathroom2"
+        ]
+      },
+      "instruction": "Pick up the photo frame in the living room near the photo frame in the living room 1, carry it to the bathroom 2, and place it there.",
+      "target_references": [
+        {
+          "object_id": "livingRoom1_photoFrame004",
+          "text": "photo frame in the living room near the photo frame",
+          "rules": [
+            {
+              "type": "category",
+              "value": "photo frame"
+            },
+            {
+              "type": "room",
+              "room_id": "livingRoom1",
+              "value": "living room"
+            },
+            {
+              "type": "near",
+              "object_id": "livingRoom1_photoFrame003",
+              "distance_max_m": 0.109
+            }
+          ],
+          "candidate_count": 2,
+          "uniqueness": "verified"
+        }
+      ]
+    },
+    {
+      "task_id": "manipulation_005",
+      "task_type": "manipulation",
+      "task_family": "object_transfer",
+      "capabilities": [
+        "navigation",
+        "manipulation"
+      ],
+      "depends_on": [
+        "manipulation_004"
+      ],
+      "target": {
+        "object_ids": [
           "masterBedroom1_deskorganizer004"
         ],
         "room_ids": [
@@ -236,52 +286,6 @@
               "type": "near",
               "object_id": "masterBedroom1_deskorganizer003",
               "distance_max_m": 0.011
-            }
-          ],
-          "candidate_count": 2,
-          "uniqueness": "verified"
-        }
-      ]
-    },
-    {
-      "task_id": "manipulation_005",
-      "task_type": "manipulation",
-      "task_family": "object_transfer",
-      "capabilities": [
-        "navigation",
-        "manipulation"
-      ],
-      "depends_on": [
-        "manipulation_004"
-      ],
-      "target": {
-        "object_ids": [
-          "masterBedroom1_deskorganizer003"
-        ],
-        "room_ids": [
-          "masterBedroom1",
-          "bathroom2"
-        ]
-      },
-      "instruction": "Pick up the deskorganizer in the bedroom near the book in the master bedroom 1, carry it to the bathroom 2, and place it there.",
-      "target_references": [
-        {
-          "object_id": "masterBedroom1_deskorganizer003",
-          "text": "deskorganizer in the bedroom near the book",
-          "rules": [
-            {
-              "type": "category",
-              "value": "deskorganizer"
-            },
-            {
-              "type": "room",
-              "room_id": "masterBedroom1",
-              "value": "bedroom"
-            },
-            {
-              "type": "near",
-              "object_id": "masterBedroom1_book003_2",
-              "distance_max_m": 0.006
             }
           ],
           "candidate_count": 2,

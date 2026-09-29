@@ -1290,27 +1290,27 @@
     {
       "task_id": "qa_003",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "target": {
         "object_ids": [
-          "masterBedroom1_storageBox002"
+          "bathroom2_toilet_1419968_yflib039"
         ],
         "room_ids": [
-          "masterBedroom1"
+          "bathroom2"
         ]
       },
       "preconditions": [],
       "expected_outcome": {
-        "answer": "bedroom",
+        "answer": "bathroom",
         "answer_type": "free_text",
         "accepted_answers": [
-          "bedroom"
+          "bathroom"
         ]
       },
       "evidence": {
         "type": "object_room",
-        "object_id": "masterBedroom1_storageBox002",
-        "room_id": "masterBedroom1"
+        "object_id": "bathroom2_toilet_1419968_yflib039",
+        "room_id": "bathroom2"
       },
       "success_criteria": {
         "comparison": "accepted_answer"
@@ -1325,7 +1325,7 @@
       "task_family": "spatial_relation_qa",
       "target": {
         "object_ids": [
-          "masterBedroom1_wardrobe_1514486_yflib020"
+          "masterBedroom1_storageBox002"
         ],
         "room_ids": [
           "masterBedroom1"
@@ -1333,16 +1333,18 @@
       },
       "preconditions": [],
       "expected_outcome": {
-        "answer": "bedroom",
-        "answer_type": "free_text",
+        "answer": 1,
+        "answer_type": "integer",
         "accepted_answers": [
+          "1",
           "bedroom"
         ]
       },
       "evidence": {
-        "type": "object_room",
-        "object_id": "masterBedroom1_wardrobe_1514486_yflib020",
-        "room_id": "masterBedroom1"
+        "type": "category_count",
+        "category": "storage_box",
+        "room_id": "masterBedroom1",
+        "count": 1
       },
       "success_criteria": {
         "comparison": "accepted_answer"

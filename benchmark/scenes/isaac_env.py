@@ -65,6 +65,17 @@ class IsaacVLNEnv:
             raise FileNotFoundError(self.scene_asset)
         context = omni.usd.get_context()
         context.open_stage(str(self.scene_asset))
+        # open_stage schedules USD/RTX loading asynchronously. Mutating prims
+        # while the loader thread is still populating the stage can crash in
+        # librtx.scenedb rather than raising a Python exception.
+        import omni.kit.app
+        app = omni.kit.app.get_app()
+        for _ in range(6000):
+            if context.get_stage_loading_status()[2] <= 0:
+                break
+            app.update()
+        else:
+            raise TimeoutError(f"timed out loading Isaac Sim stage: {self.scene_asset}")
         self.stage = context.get_stage()
         if self.stage is None:
             raise RuntimeError(f"Isaac Sim could not open {self.scene_asset}")
@@ -118,6 +129,10 @@ class IsaacVLNEnv:
         # optional HoloAgent bridge creates its own RGB-D render product, so
         # the benchmark observation protocol does not need to carry depth.
         self.camera.initialize(attach_rgb_annotator=True)
+        try:
+            self.camera.add_distance_to_image_plane_to_frame()
+        except (AttributeError, RuntimeError):
+            pass
         self._configure_camera_intrinsics()
         self._configure_scene_rendering()
         if holoagent_sensor_topics is not None:
@@ -219,6 +234,16 @@ class IsaacVLNEnv:
         self._resolution = float(navigation["resolution"])
         self._floor_height = float(navigation["floor_height"])
         self._door_cells = self._build_door_cells(metadata)
+        # Some cached navigation files rasterize the wall behind a door as
+        # static occupancy.  Keep the opening reserved for the dynamic panel;
+        # otherwise opening the door clears the panel but leaves a three-cell
+        # wall plug and ``passable`` remains false.  The door-cell margin
+        # already includes the avatar radius, so this does not widen unrelated
+        # wall segments.
+        self._static_base = self._static_base.copy()
+        for cells in self._door_cells.values():
+            for cell_x, cell_y in cells:
+                self._static_base[cell_y, cell_x] = 0
         self._door_open = set()
         self._door_passable = {}
         self._door_visual_rest = {}
@@ -411,6 +436,11 @@ class IsaacVLNEnv:
         """Set the session reset anchor without changing world state."""
         if start_pose is not None and apply_pose:
             self.set_agent_pose(start_pose, update_reset_pose=True)
+        if not self._walkable(self._agent_position):
+            self._agent_position = self._nearest_walkable_position(self._agent_position)
+            self._safe_position = self._agent_position.copy()
+            self._author_camera_pose()
+            self._update_overview_marker()
         self._session_start_pose = deepcopy(self.get_agent_pose())
         self._reset_applied = False
 
@@ -500,6 +530,26 @@ class IsaacVLNEnv:
         return (int(math.floor((float(position[0]) - float(self._origin[0])) / self._resolution)),
                 int(math.floor((float(position[1]) - float(self._origin[1])) / self._resolution)))
 
+    def _collision_radius(self) -> float:
+        """Return the footprint radius for the avatar and any carried object.
+
+        Pick/place is represented by a kinematic object that follows the
+        avatar. Treating only the avatar as the swept body lets a large item
+        (for example a computer) clip through a closed doorway even though the
+        avatar itself is collision checked. A conservative circular radius
+        from the carried object's world AABB keeps the high-level sweep
+        physically consistent without depending on PhysX contact callbacks.
+        """
+        radius = max(0.0, float(self.config.robot_radius))
+        if self._held_object:
+            bounds = self._objects.get(self._held_object, {}).get("geometry", {}).get("world_aabb", {})
+            minimum, maximum = bounds.get("min"), bounds.get("max")
+            if minimum and maximum and len(minimum) >= 2 and len(maximum) >= 2:
+                extent_x = max(0.0, float(maximum[0]) - float(minimum[0]))
+                extent_y = max(0.0, float(maximum[1]) - float(minimum[1]))
+                radius = max(radius, 0.5 * math.hypot(extent_x, extent_y))
+        return radius
+
     def _walkable(self, position: Any) -> bool:
         """Return whether the agent's 2-D circular footprint is collision-free."""
         static = self._static_base if self._static_base is not None else self._static
@@ -531,6 +581,55 @@ class IsaacVLNEnv:
                 if dx * dx + dy * dy <= radius * radius:
                     return False
         return True
+
+    def _carried_door_clear(self, position: Any) -> bool:
+        """Check the carried item's footprint against closed door panels.
+
+        The avatar's normal sweep remains responsible for static furniture and
+        walls.  The carried item is checked separately against door cells so a
+        pickup next to a desk does not become an impossible starting overlap,
+        while a computer still cannot be swept through a closed doorway.
+        """
+        if not self._held_object:
+            return True
+        radius = self._collision_radius()
+        center_x, center_y = float(position[0]), float(position[1])
+        for object_id, cells in self._door_cells.items():
+            if object_id in self._door_open:
+                continue
+            for cell_x, cell_y in cells:
+                left = float(self._origin[0]) + cell_x * self._resolution
+                right = left + self._resolution
+                bottom = float(self._origin[1]) + cell_y * self._resolution
+                top = bottom + self._resolution
+                dx = max(left - center_x, 0.0, center_x - right)
+                dy = max(bottom - center_y, 0.0, center_y - top)
+                if dx * dx + dy * dy <= radius * radius:
+                    return False
+        return True
+
+    def _nearest_walkable_position(self, position: Any, max_distance: float = 2.0) -> Any:
+        """Snap an invalid authored start to the nearest collision-free cell center."""
+        center_x, center_y = self._cell(position)
+        limit = max(1, int(math.ceil(max_distance / self._resolution)))
+        candidates = []
+        for dy in range(-limit, limit + 1):
+            for dx in range(-limit, limit + 1):
+                cell_x, cell_y = center_x + dx, center_y + dy
+                candidate = self._np.array([
+                    float(self._origin[0]) + (cell_x + 0.5) * self._resolution,
+                    float(self._origin[1]) + (cell_y + 0.5) * self._resolution,
+                    float(position[2]),
+                ], dtype=float)
+                distance = float(self._np.linalg.norm(candidate[:2] - self._np.asarray(position)[:2]))
+                if distance <= max_distance and self._walkable(candidate):
+                    candidates.append((distance, cell_y, cell_x, candidate))
+        if not candidates:
+            raise RuntimeError(
+                f"no collision-free agent start within {max_distance:.2f} m of "
+                f"{self._np.asarray(position).tolist()}"
+            )
+        return min(candidates, key=lambda item: item[:3])[3]
 
     def _nearest_door(self, max_distance: float = 1.25) -> tuple[str, float] | None:
         candidates = []
@@ -567,6 +666,21 @@ class IsaacVLNEnv:
                 values.append({"object_id": object_id, "distance_m": distance,
                                "open": object_id in self._door_open,
                                "passable": self._door_passable.get(object_id)})
+        return sorted(values, key=lambda item: item["distance_m"])
+
+    def _nearby_manipulable_objects(self, max_distance: float = 3.0) -> list[dict[str, Any]]:
+        """Expose local action affordances, never task targets or ground truth."""
+        values = []
+        for object_id in self._pickable:
+            entity = self._objects.get(object_id, {})
+            distance = float(self._np.linalg.norm(
+                self._get_object_world_position(object_id)[:2] - self._agent_position[:2]))
+            if distance <= max_distance:
+                values.append({"object_id": object_id,
+                               "category": entity.get("category"),
+                               "room_id": entity.get("room_id"),
+                               "distance_m": distance,
+                               "reachable": distance <= 1.5})
         return sorted(values, key=lambda item: item["distance_m"])
 
     def _door_passage_connected(self, object_id: str) -> bool:
@@ -788,7 +902,7 @@ class IsaacVLNEnv:
             travelled = min(distance, index * sample)
             candidate = self._np.asarray(start, dtype=float).copy()
             candidate[:2] += self._np.asarray(direction, dtype=float)[:2] * travelled
-            if not self._walkable(candidate):
+            if not self._walkable(candidate) or not self._carried_door_clear(candidate):
                 return max(0.0, (index - 1) * sample)
         return distance
 
@@ -809,9 +923,10 @@ class IsaacVLNEnv:
 
     def _pick(self, action: dict[str, Any]) -> dict[str, Any]:
         object_id = str(action.get("object_id") or action.get("target") or "")
+        if object_id not in self._objects and object_id:
+            object_id = self._resolve_nearby_object(object_id, self._pickable) or object_id
         if not object_id:
-            ids = self._active_task.get("target", {}).get("object_ids", [])
-            object_id = str(ids[0]) if ids else ""
+            return {"success": False, "reason": "object_required", "object_id": ""}
         if object_id not in self._objects:
             return {"success": False, "reason": "unknown_object", "object_id": object_id}
         if object_id not in self._pickable:
@@ -826,6 +941,30 @@ class IsaacVLNEnv:
         self._set_kinematic(object_id, True)
         self._follow_held_object()
         return {"success": True, "reason": "picked", "object_id": object_id, "held_object": object_id}
+
+    def _resolve_nearby_object(self, query: str, allowed: set[str],
+                               max_distance: float = 1.5) -> str | None:
+        """Resolve an agent-supplied semantic label among physically reachable objects.
+
+        This is an action affordance, not task supervision: it never consults
+        the active task target or ground truth.
+        """
+        words = {part for part in __import__("re").split(r"[^a-z0-9]+", query.lower()) if part}
+        if not words:
+            return None
+        candidates = []
+        for object_id in allowed:
+            entity = self._objects.get(object_id, {})
+            category = str(entity.get("category", ""))
+            label = f"{object_id} {category}".lower()
+            score = sum(word in label for word in words)
+            if score <= 0:
+                continue
+            distance = float(self._np.linalg.norm(
+                self._get_object_world_position(object_id)[:2] - self._agent_position[:2]))
+            if distance <= max_distance:
+                candidates.append((-score, distance, object_id))
+        return min(candidates)[2] if candidates else None
 
     def _place(self, action: dict[str, Any]) -> dict[str, Any]:
         if not self._held_object:
@@ -910,6 +1049,9 @@ class IsaacVLNEnv:
             info = self._place(action)
         elif name in {"open", "close"}:
             requested = str(action.get("object_id") or action.get("target") or "")
+            if requested not in self._door_cells and requested:
+                requested = self._resolve_nearby_object(
+                    requested, set(self._door_cells), max_distance=3.0) or requested
             if not requested:
                 nearest = self._nearest_door()
                 requested = nearest[0] if nearest else ""
@@ -955,6 +1097,13 @@ class IsaacVLNEnv:
         self._follow_held_object()
         images = {}
         rgb = self.camera.get_rgb()
+        try:
+            frame = self.camera.get_current_frame()
+            depth = frame.get("distance_to_image_plane") if isinstance(frame, dict) else None
+            if depth is not None:
+                self._last_depth = depth
+        except (AttributeError, RuntimeError):
+            pass
         if rgb is not None:
             self._last_rgb = rgb
             images["front"] = rgb
@@ -964,6 +1113,7 @@ class IsaacVLNEnv:
             "images": images, "depth": self._last_depth, "pose": self.get_agent_pose(),
             "held_object": self._held_object, "room_id": self._room_at(self._agent_position),
             "nearby_doors": self._nearby_doors(),
+            "nearby_manipulable_objects": self._nearby_manipulable_objects(),
             "action_feedback": deepcopy(self._last_action_feedback),
             "reset_applied": bool(self._reset_applied),
         }

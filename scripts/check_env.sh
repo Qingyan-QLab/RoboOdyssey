@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATASET="${DATASET_DIR:-${ROOT}/dataset/scene000430_new}"
+DATASET="${DATASET_DIR:-${ROOT}/dataset/scene000430_after_changes}"
 REQUIRE_ISAAC=0
 
 usage() {
@@ -20,10 +20,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "${ISAACSIM_ROOT:-}" ]]; then
+  for candidate in "${ROOT}/../.." "${ROOT}/.."; do
+    if [[ -x "${candidate}/python.sh" ]]; then
+      ISAACSIM_ROOT="$(cd "${candidate}" && pwd)"
+      break
+    fi
+  done
+fi
+
 if [[ -n "${BENCHMARK_PYTHON:-}" ]]; then
   PYTHON_BIN="${BENCHMARK_PYTHON}"
 elif [[ -x "${ROOT}/.venv/bin/python" ]]; then
   PYTHON_BIN="${ROOT}/.venv/bin/python"
+elif [[ "${REQUIRE_ISAAC}" == 1 && -x "${ISAACSIM_ROOT:-}/python.sh" ]]; then
+  PYTHON_BIN="${ISAACSIM_ROOT}/python.sh"
 else
   PYTHON_BIN="python3"
 fi

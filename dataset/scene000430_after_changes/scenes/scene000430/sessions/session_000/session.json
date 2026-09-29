@@ -177,8 +177,8 @@
           "studyRoom1"
         ]
       },
-      "question": "Which room contains the book in the study near the book?",
-      "answer_type": "free_text",
+      "question": "How many book objects are in the study?",
+      "answer_type": "integer",
       "target_references": [
         {
           "object_id": "studyRoom1_book242",

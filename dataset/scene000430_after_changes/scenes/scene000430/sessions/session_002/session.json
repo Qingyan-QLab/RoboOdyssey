@@ -48,26 +48,28 @@
     {
       "task_id": "qa_002",
       "task_type": "qa",
-      "task_family": "spatial_relation_qa",
+      "task_family": "navigation_qa",
       "capabilities": [
-        "qa"
+        "navigation",
+        "qa",
+        "memory"
       ],
       "depends_on": [
         "navigation_001"
       ],
       "target": {
         "object_ids": [
-          "bathroom1_toilet_1419968_yflib037"
+          "bathroom2_toilet_1419968_yflib039"
         ],
         "room_ids": [
-          "bathroom1"
+          "bathroom2"
         ]
       },
-      "question": "Which room contains the toilet in the bathroom?",
+      "question": "Which room contained the toilet in the bathroom you encountered earlier?",
       "answer_type": "free_text",
       "target_references": [
         {
-          "object_id": "bathroom1_toilet_1419968_yflib037",
+          "object_id": "bathroom2_toilet_1419968_yflib039",
           "text": "toilet in the bathroom",
           "rules": [
             {
@@ -76,7 +78,7 @@
             },
             {
               "type": "room",
-              "room_id": "bathroom1",
+              "room_id": "bathroom2",
               "value": "bathroom"
             }
           ],
@@ -97,22 +99,22 @@
       ],
       "target": {
         "object_ids": [
-          "bathroom1_bathroomcabinet_1504987_yflib038"
+          "bathroom1_toilet_1419968_yflib037"
         ],
         "room_ids": [
           "bathroom1"
         ]
       },
-      "question": "Which room contains the bathroom cabinet in the bathroom?",
+      "question": "Which room contains the toilet in the bathroom?",
       "answer_type": "free_text",
       "target_references": [
         {
-          "object_id": "bathroom1_bathroomcabinet_1504987_yflib038",
-          "text": "bathroom cabinet in the bathroom",
+          "object_id": "bathroom1_toilet_1419968_yflib037",
+          "text": "toilet in the bathroom",
           "rules": [
             {
               "type": "category",
-              "value": "bathroom cabinet"
+              "value": "toilet"
             },
             {
               "type": "room",
