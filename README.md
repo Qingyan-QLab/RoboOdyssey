@@ -7,12 +7,17 @@ session 顺序执行任务，并将动作、状态和指标保存到结果目录
 
 ### 1. 安装依赖
 
+需要 Python 3.10 或更高版本。下面的脚本会在项目目录创建 `.venv`，并安装项目所需的
+主机侧依赖；不要求用户预先准备虚拟环境：
+
 ```bash
 git clone <repository-url>
 cd longterm_benchmark
 ./scripts/bootstrap.sh
-source .venv/bin/activate
 ```
+
+后文命令使用项目内的 `.venv/bin/python`，因此不依赖当前 shell 是否执行过
+`source .venv/bin/activate`。如果希望直接输入 `python`，可以额外执行该命令激活环境。
 
 主机 Python 环境用于数据校验和 dry-run；真正运行 benchmark 还需要单独安装兼容版本的
 Isaac Sim，并设置：
@@ -48,9 +53,9 @@ dataset/<dataset-name>/
 放在其他目录，并通过 `--dataset` 或 `DATASET_DIR` 指定。先校验数据：
 
 ```bash
-python scripts/validate_dataset.py dataset/<dataset-name>
+./.venv/bin/python scripts/validate_dataset.py dataset/<dataset-name>
 # 可选：生成 SHA-256 清单
-python scripts/make_checksums.py dataset/<dataset-name>
+./.venv/bin/python scripts/make_checksums.py dataset/<dataset-name>
 ```
 
 ### 3. 检查并预览任务
@@ -58,8 +63,8 @@ python scripts/make_checksums.py dataset/<dataset-name>
 以下命令不启动 Isaac Sim：
 
 ```bash
-python -m benchmark doctor --dataset dataset/<dataset-name>
-python -m benchmark run --dataset dataset/<dataset-name> --dry-run
+./.venv/bin/python -m benchmark doctor --dataset dataset/<dataset-name>
+./.venv/bin/python -m benchmark run --dataset dataset/<dataset-name> --dry-run
 # 等价写法
 ./run_benchmark.sh --dataset dataset/<dataset-name> --dry-run
 ```
@@ -84,7 +89,7 @@ python -m benchmark run --dataset dataset/<dataset-name> --dry-run
 正式评测使用完整数据集配置：
 
 ```bash
-python -m benchmark run --official \
+./run_benchmark.sh --official \
   --dataset dataset/<dataset-name> \
   --agent-cmd "python3 ${PWD}/examples/my_agent.py"
 ```
@@ -94,7 +99,7 @@ python -m benchmark run --official \
 `--task-type navigation|manipulation|qa`。运行参数完整列表：
 
 ```bash
-python -m benchmark run --help
+./.venv/bin/python -m benchmark run --help
 ```
 
 ## Agent 接入
@@ -122,7 +127,7 @@ HoloAgent 的传感器、网关和服务配置见 [`docs/AGENT_INTEGRATION.md`](
 `summary.json` 以及每个 session 的 JSONL 和指标文件。分析结果：
 
 ```bash
-python scripts/analyze_result.py results/<run-directory>
+./.venv/bin/python scripts/analyze_result.py results/<run-directory>
 ```
 
 `results/`、虚拟环境、缓存和大型数据资产默认被 `.gitignore` 排除。发布大型
