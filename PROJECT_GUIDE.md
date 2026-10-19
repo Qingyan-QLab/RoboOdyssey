@@ -65,6 +65,11 @@ agent 不会收到 ground truth 或 mutation。QA 和 manipulation 的能力由 
 协议响应和环境状态判断；SimpleNav 只实现导航能力，其余任务按失败记录但不阻断后续
 session。
 
+导航执行以 `IsaacVLNEnv._walkable()` 和移动过程的 swept collision check 为准。门的
+`passable` 状态只有在开门后通过门两侧连通性检查才会成立；agent 不应绕过碰撞反馈，
+也不应把不可达目标替换成其他房间的最近栅格。外挂 Oracle 可以基于 GT 选择门，但仍
+须通过 JSONL 的 `open` 和移动动作完成穿门，并在每次 observation 后重新规划。
+
 ## 4. 文件职责
 
 | 文件或目录 | 职责 |
