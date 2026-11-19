@@ -2,8 +2,7 @@
 """Protocol-v1 adapter for an OpenAI-compatible vision chat endpoint.
 
 The endpoint is expected to return one JSON object: ``{"action": ...}`` for a
-step request or ``{"answer": ...}`` for QA. Session-start observations are
-summarized into the adapter's private conversation state.
+step request, with an answer when the public response_mode requests one.
 """
 from __future__ import annotations
 
@@ -24,21 +23,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from benchmark.agents.stream import serve
 
 
-SYSTEM = """You are HoloAgent, an embodied agent in an indoor simulator. Return JSON only.
+SYSTEM = """You are an embodied agent in an indoor simulator. Return JSON only.
 For step requests return {"action":{"action":"...", ...},"done":false}.
-Legal actions: no_op, move_forward, move_backward, move_left, move_right,
-turn_left, turn_right, look_up, look_down, pick, place, open, close, reset.
-For pick/open/close, provide object_id when known; otherwise provide a visible
-semantic label in target. For place, provide room_id only when known from your
-own observations. nearby_manipulable_objects lists local physical affordances;
-pick an exact reachable object_id from it. If held_object is non-null, navigate
-to the requested destination room and place it there. A blocked movement must
-be followed by a turn or lateral move, never the same movement repeatedly.
-Use previous_result to recover from failed actions.
-For QA return {"answer":"..."}. You may return memory_update containing only
-facts inferred from supplied observations and instructions. Never request or
-assume scene ground truth, hidden target coordinates, reference trajectories,
-or expected answers. Never include markdown."""
+Use only public instructions, introduced names, images, pose and action_feedback.
+For pick, use an introduced object name in target; place releases the held object
+at the current position. Navigation must rely on the supplied observations.
+For actions_and_answer, include an answer and done=true when ready.
+You may return memory_update containing only facts inferred from public inputs.
+Never request ground truth, private IDs, hidden coordinates or reference paths.
+Never include markdown."""
 
 
 def _image_url(value: Any) -> str | None:
@@ -62,14 +55,12 @@ def _images(payload: dict[str, Any], limit: int = 4) -> list[str]:
         candidates.extend((observation.get('images') or {}).values())
     observation = payload.get("observation", {})
     candidates.extend((observation.get("images") or {}).values())
-    for view in payload.get("session_views", [])[-limit:]:
-        candidates.extend((view.get("observation", {}).get("images") or {}).values())
     return [url for item in candidates if (url := _image_url(item)) is not None][-limit:]
 
 
 def _text(payload: dict[str, Any]) -> str:
     public = {key: value for key, value in payload.items()
-              if key not in {"observation", "observation_history", "session_views", "memory"}}
+              if key not in {"observation", "observation_history", "memory"}}
     memory = payload.get("memory", {})
     return "Request:\n" + json.dumps(public, ensure_ascii=False) + \
            "\nMemory supplied by benchmark:\n" + json.dumps(memory, ensure_ascii=False)
@@ -85,6 +76,12 @@ class Adapter:
         self.timeout = timeout
 
     def request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get('type') == 'session_start':
+            # These backends use independent messages on every call. Their
+            # only memory is the public memory supplied by the benchmark.
+            sequence = payload.get('sequence_context', {})
+            return {'memory_update': {},
+                    **({'sequence_reset_ack': sequence['run_id']} if sequence.get('reset_memory') else {})}
         content: list[dict[str, Any]] = [{"type": "text", "text": _text(payload)}]
         content.extend({"type": "image_url", "image_url": {"url": url}}
                        for url in _images(payload))
@@ -158,6 +155,12 @@ class LocalTransformersAdapter:
         raise ValueError(f"local VLM did not return JSON: {text[-500:]}")
 
     def request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get('type') == 'session_start':
+            # These backends use independent messages on every call. Their
+            # only memory is the public memory supplied by the benchmark.
+            sequence = payload.get('sequence_context', {})
+            return {'memory_update': {},
+                    **({'sequence_reset_ack': sequence['run_id']} if sequence.get('reset_memory') else {})}
         content: list[dict[str, Any]] = [
             {"type": "image", "image": image} for image in _pil_images(payload)
         ]
@@ -191,14 +194,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=120.0)
     args = parser.parse_args()
     adapter = Adapter(args.endpoint, args.model, args.api_key, args.timeout)
-    def handle(payload):
-        response = adapter.request(payload)
-        if payload.get("type") == "session_start" and not isinstance(response, dict):
-            response = {"ok": True}
-        if payload.get('type') == 'session_start' and payload.get('sequence_context', {}).get('reset_memory'):
-            response['sequence_reset_ack'] = payload['sequence_context']['run_id']
-        return response
-    serve(handle, history_frames=3)
+    serve(adapter.request, history_frames=3)
     return 0
 
 

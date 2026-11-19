@@ -15,7 +15,7 @@ done
 HOLOAGENT_ROOT="${HOLOAGENT_ROOT:-${ROOT}/../../../HoloAgent}"
 FSR_ROOT="${HOLOAGENT_ROOT}/agentic_robot/fsr_vln"
 # CUDA_VISIBLE_DEVICES below exposes only the compatible GPU, so it is cuda:0
-# inside the legacy HoloAgent process.
+# inside the HoloAgent process.
 MAPPING_DEVICE="${HOLOAGENT_MAPPING_DEVICE:-cuda:0}"
 pick_free_port() {
   /usr/bin/python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'

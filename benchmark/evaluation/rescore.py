@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..artifacts.layout import local_path, sha256_file, safe_id
+from ..artifacts.layout import sha256_file, safe_id
 
 from .task_metrics import prepare_reference
 

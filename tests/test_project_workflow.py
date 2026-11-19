@@ -1,9 +1,9 @@
+from benchmark.artifacts.layout import session_file
 """CPU contracts for versioned artifacts, CLI dispatch and process ownership."""
 from contextlib import redirect_stdout
 from copy import deepcopy
 from io import StringIO
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -32,7 +32,7 @@ class ArtifactWorkflowTests(unittest.TestCase):
             write_dataset(archive, select_scenario(c, plan), c, inputs)
             dataset = BenchmarkDataset(archive)
             summaries = []
-            for structured in (False, True):
+            for structured in (True,):
                 output = root/str(structured)
                 if structured:
                     initialize_run(output, dataset)
@@ -55,14 +55,6 @@ class ArtifactWorkflowTests(unittest.TestCase):
                     once = deepcopy(progress.read(output))
                     self.assertEqual(once, progress.read(output))
                     self.assertEqual(once['completed_tasks'], 1)
-                    legacy=read_json(output/'manifest.json');legacy['runtime_contract']['version']=2
-                    write_json(output/'manifest.json',legacy)
-                    with patch('benchmark.evaluation.task_diagnostics.analyze_run') as diagnose:
-                        old_report=analyze(output,root/'legacy_contract_report')
-                        diagnose.assert_not_called()
-                    self.assertTrue(old_report['ok']);self.assertTrue(old_report['notes'])
-            for key in ('task_score','tasks_evaluated','tasks_excluded','evaluation_valid'):
-                self.assertEqual(summaries[0][key],summaries[1][key])
 
     def test_collection_reports_include_missing_runs_as_errors(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -119,7 +111,7 @@ class ExperimentWorkflowTests(unittest.TestCase):
                 processes.append((argv,kwargs,process))
                 if '--run-directory' in argv:
                     root=Path(argv[argv.index('--run-directory')+1]);root.mkdir(parents=True)
-                    write_json(root/'summary.json', {'evaluation_valid':True,'task_score':.5})
+                    write_json(root/'summary.json', {'evaluation_valid':True,'task_score':.5,'task_success_rate':.5,'metric_version':'progress_path_v3','metrics_complete':True})
                 return process
             with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
                  patch('benchmark.launch.experiment.capture_provenance'), \
@@ -208,40 +200,6 @@ class ExperimentWorkflowTests(unittest.TestCase):
 
 
 class ReusedEntryTests(unittest.TestCase):
-    def test_historical_imports_keep_identity_and_patch_targets_in_fresh_processes(self):
-        script = '''
-from importlib import import_module
-import sys
-from unittest.mock import patch
-
-pairs = (
-    ('benchmark.runtime.simplenav_launch', 'benchmark.launch.simplenav'),
-    ('benchmark.runtime.sequence_runs', 'benchmark.launch.sequences'),
-    ('benchmark.runtime.task_repair', 'benchmark.legacy.task_repair'),
-    ('benchmark.runtime.task_history', 'benchmark.legacy.task_history'),
-    ('benchmark.runtime.repair_audit', 'benchmark.reporting.legacy'),
-    ('benchmark.evaluation.request_audit', 'benchmark.reporting.request_audit'),
-    ('benchmark.evaluation.task_diagnostics_report', 'benchmark.reporting.task_diagnostics_report'),
-    ('benchmark.evaluation.accounting', 'benchmark.evaluation.report'),
-    ('benchmark.evaluation.request_report', 'benchmark.evaluation.report'),
-    ('benchmark.contracts.calendar', 'benchmark.contracts.language'),
-    ('benchmark.contracts.object_references', 'benchmark.contracts.references'),
-    ('benchmark.contracts.routes', 'benchmark.contracts.navigation'),
-    ('benchmark.reporting.legacy_repair', 'benchmark.reporting.legacy'),
-)
-for historical, canonical in pairs:
-    names = (historical, canonical) if sys.argv[1] == 'historical_first' else (canonical, historical)
-    assert import_module(names[0]) is import_module(names[1]), names
-with patch('benchmark.runtime.simplenav_launch.preflight', return_value={'ok': True}):
-    assert import_module('benchmark.launch.simplenav').preflight({}) == {'ok': True}
-for forbidden in ('torch', 'isaacsim', 'omni', 'CL_task_builder', 'CL_session_builder'):
-    assert forbidden not in sys.modules, forbidden
-'''
-        for order in ('historical_first', 'canonical_first'):
-            with self.subTest(order=order):
-                result = subprocess.run([sys.executable, '-c', script, order],
-                    cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_shared_jsonl_reader_keeps_strict_scoring_and_tolerant_audit_errors(self):
         from benchmark.artifacts.layout import read_json_lines
@@ -291,15 +249,6 @@ for forbidden in ('torch', 'isaacsim', 'omni', 'CL_task_builder', 'CL_session_bu
                 main(['analyze', 'unused-run', '--output', temp])
             analyze_run.assert_not_called()
 
-    def test_legacy_html_embedded_json_preserves_angle_brackets_safely(self):
-        from benchmark.reporting.legacy import write_report
-        with tempfile.TemporaryDirectory() as temp, \
-             patch('benchmark.reporting.legacy.collect', return_value={'text': '</script><example>'}):
-            output = Path(temp)/'report.html'
-            write_report(Path(temp), output)
-            embedded = output.read_text().split('const DATA=', 1)[1].split(';', 1)[0]
-            self.assertNotIn('<', embedded)
-            self.assertEqual(json.loads(embedded)['text'], '</script><example>')
 
     def test_file_map_is_complete_and_current(self):
         from benchmark.validation.inventory import render, ROOT, DOCUMENT

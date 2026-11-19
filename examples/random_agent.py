@@ -13,8 +13,6 @@ def handle(request):
         response = {"ok": True}
         if request.get('sequence_context', {}).get('reset_memory'):
             response['sequence_reset_ack'] = request['sequence_context']['run_id']
-    elif request_type == "qa":
-        response = {"answer": ""}
     else:
         step = int(request.get("task_step", 0))
         response = {"action": {"action": "turn_left", "angle_degrees": 15}, "done": step >= 4}

@@ -131,32 +131,30 @@ class SequenceData:
         self.manifest = read(self.root/'dataset_manifest.json')
         m = self.manifest
         if (m.get('schema_version') != 5 or m.get('dataset_schema') != 'cl_task_sequence_v1'
-                or m.get('layout_version') not in (1, 2)
-                or m.get('runtime_contract') not in [dict(name='contextual_requests', version=v) for v in (1, 2, 3)]):
+                or m.get('layout_version') != 2
+                or m.get('runtime_contract') != dict(name='contextual_requests', version=3)):
             raise ValueError('unsupported frozen dataset layout/runtime contract')
-        self.version = None
-        if m['layout_version'] == 2:
-            sid = identity(m.get('sequence_id'))
-            if self.root.name != sid or self.root.parent.name != 'sequences':
-                raise ValueError('shared sequence must be under collection/sequences/sequence_id')
-            ref = m['scene_reference']
-            self.version = SceneVersion(self.root.parent.parent, ref['revision'], expected_hash=ref['manifest_sha256'])
-            if self.version.manifest['scene_id'] != m['scene_id']:
-                raise ValueError('sequence and shared scene identities differ')
-            index = collection(self.root.parent.parent)['sequences'].get(sid)
-            if not index or index['revision'] != ref['revision']:
-                raise ValueError('sequence differs from collection revision')
-            for key in ('scene_metainfo', 'scene_understanding', 'navigation', 'manipulation',
-                        'public_language_profile', 'environment_setup'):
-                if m.get(key) != {'scope': 'scene_version', 'key': key}:
-                    raise ValueError('invalid shared scene reference: '+key)
-            if m.get('scene_asset') != {'scope': 'scene_version'}:
-                raise ValueError('invalid shared scene asset reference')
+        sid = identity(m.get('sequence_id'))
+        if self.root.name != sid or self.root.parent.name != 'sequences':
+            raise ValueError('shared sequence must be under collection/sequences/sequence_id')
+        ref = m['scene_reference']
+        self.version = SceneVersion(self.root.parent.parent, ref['revision'], expected_hash=ref['manifest_sha256'])
+        if self.version.manifest['scene_id'] != m['scene_id']:
+            raise ValueError('sequence and shared scene identities differ')
+        index = collection(self.root.parent.parent)['sequences'].get(sid)
+        if not index or index['revision'] != ref['revision']:
+            raise ValueError('sequence differs from collection revision')
+        for key in ('scene_metainfo', 'scene_understanding', 'navigation', 'manipulation',
+                    'public_language_profile', 'environment_setup'):
+            if m.get(key) != {'scope': 'scene_version', 'key': key}:
+                raise ValueError('invalid shared scene reference: '+key)
+        if m.get('scene_asset') != {'scope': 'scene_version'}:
+            raise ValueError('invalid shared scene asset reference')
 
     def path(self, key):
         ref = self.manifest[key]
         if isinstance(ref, dict):
-            if not self.version or ref != {'scope': 'scene_version', 'key': key}:
+            if ref != {'scope': 'scene_version', 'key': key}:
                 raise ValueError('invalid scoped reference: '+key)
             return self.version.path(key)
         path = inside(self.root, ref)
@@ -165,17 +163,8 @@ class SequenceData:
         return path
 
     def asset(self):
-        if self.version:
-            asset = self.version.manifest.get('scene_asset')
-            return {'path': str(self.version.asset_path()), 'sha256': asset['sha256']} if asset else None
-        asset = self.manifest.get('scene_asset')
-        if asset:
-            ref = asset['path']
-            # Layout 1 historical archives may refer to a separately supplied asset.
-            path = Path(ref).expanduser() if Path(ref).is_absolute() else inside(self.root, ref)
-            check_file(path, asset['sha256'])
-            return {**asset, 'path': str(path)}
-        return None
+        asset = self.version.manifest.get('scene_asset')
+        return {'path': str(self.version.asset_path()), 'sha256': asset['sha256']} if asset else None
 
     def load(self):
         m = self.manifest
@@ -191,21 +180,17 @@ class SequenceData:
         if navigation.get('environment_setup'):
             if 'environment_setup' not in m or read(self.path('environment_setup')) != navigation['environment_setup']:
                 raise ValueError('environment setup differs from navigation')
-        if m['runtime_contract']['version'] == 3:
-            catalog = validate_catalog(read(self.path('language_catalog')))
-        else:
-            catalog = None
+        catalog = validate_catalog(read(self.path('language_catalog')))
         plan = read(self.path('plan'))
         if m.get('sequence_id') != plan.get('sequence_id'):
             raise ValueError('sequence manifest and frozen plan identities differ')
-        if self.version:
-            if plan.get('scene_reference') != m['scene_reference']:
-                raise ValueError('frozen plan scene revision mismatch')
-            initial = read(self.version.path('initial_state'))
-            if digest(initial) != self.version.manifest['initial_state_sha256']:
-                raise ValueError('initial robot state checksum mismatch')
-            if plan.get('names') != read(self.version.path('names')):
-                raise ValueError('frozen names differ from scene revision')
+        if plan.get('scene_reference') != m['scene_reference']:
+            raise ValueError('frozen plan scene revision mismatch')
+        initial = read(self.version.path('initial_state'))
+        if digest(initial) != self.version.manifest['initial_state_sha256']:
+            raise ValueError('initial robot state checksum mismatch')
+        if plan.get('names') != read(self.version.path('names')):
+            raise ValueError('frozen names differ from scene revision')
         sessions = m.get('sessions')
         if not isinstance(sessions, list) or not sessions:
             raise ValueError('sequence has no sessions')
@@ -231,15 +216,14 @@ class SequenceData:
             for task, truth, template in zip(tasks, truths, templates):
                 if not truth.get('goals') or len(truth['goals']) != len(template['goals']):
                     raise ValueError('frozen goal/template count mismatch')
-                if catalog is not None:
-                    if template.get('schema_version') != 3 or render_request(template) != task['instruction']:
-                        raise ValueError('public instruction differs from frozen template')
-                    snapshots = [template['main'], *(intro['snapshot'] for intro in template['introductions'])]
-                    entries = {c['template_id']: c for c in catalog['templates']}
-                    for snapshot in snapshots:
-                        approved = entries.get(snapshot['template_id'])
-                        if not approved or snapshot['expression'] != approved['variants'].get(snapshot['variant_id']):
-                            raise ValueError('template expression differs from frozen catalog')
+                if template.get('schema_version') != 3 or render_request(template) != task['instruction']:
+                    raise ValueError('public instruction differs from frozen template')
+                snapshots = [template['main'], *(intro['snapshot'] for intro in template['introductions'])]
+                entries = {c['template_id']: c for c in catalog['templates']}
+                for snapshot in snapshots:
+                    approved = entries.get(snapshot['template_id'])
+                    if not approved or snapshot['expression'] != approved['variants'].get(snapshot['variant_id']):
+                        raise ValueError('template expression differs from frozen catalog')
                 if any(oid not in cache['objects'] for goal in truth['goals'] for oid in goal['target']['object_ids']):
                     raise ValueError('ground truth references an unknown object')
             if not isinstance(values['mutations'], list):
@@ -254,29 +238,3 @@ class SequenceData:
         pick_ids = {c['object_id'] for c in manipulation.get('pick_place_candidates', [])}
         return SimpleNamespace(metadata=metadata, engine=SimpleNamespace(
             rooms=deepcopy(metadata['rooms']), navigation=navigation, pick_ids=pick_ids))
-
-
-class LegacyData:
-    """Read archived schema 4 contracts without the generation/replay toolchain."""
-    def __init__(self, root):
-        self.root = Path(root).resolve()
-        self.manifest = read(self.root/'dataset_manifest.json')
-
-    def path(self, key):
-        defaults = {'runtime_scene_cache': 'private/scene/runtime_scene_cache.json',
-                    'scene_metainfo': 'scene_metainfo.json'}
-        return inside(self.root, self.manifest.get(key, defaults.get(key, key)))
-
-    def session_path(self, entry, key):
-        return inside(self.root, entry[key])
-
-    def load_result(self):
-        if self.manifest.get('files'):
-            inventory(self.root, self.manifest['files'])
-        for entry in self.manifest['sessions']:
-            public = read(self.session_path(entry, 'session'))
-            gt = read(self.session_path(entry, 'ground_truth'))
-            templates = read(self.session_path(entry, 'task_templates'))
-            if ([t['task_id'] for t in public['tasks']] != [t['task_id'] for t in gt['tasks']]
-                    or [t['task_id'] for t in public['tasks']] != [t['task_id'] for t in templates['tasks']]):
-                raise ValueError('legacy task/GT/template identity mismatch')

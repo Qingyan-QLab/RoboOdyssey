@@ -40,7 +40,7 @@ Other execution success flags concern the action, not task success. After a coll
 change direction or viewpoint. Missing feedback means unavailable, not success.
 reset recovers the robot pose; world state, task budget and conversation continue.
 For actions_and_answer, explore with allowed actions, then answer briefly using no_op
-and done=true. Use introduced area names for location answers. For legacy qa an answer
+and done=true. Use introduced area names for location answers. An answer
 may use action=null. Scenario time, not wall time, determines terms such as yesterday.
 Return JSON only with exactly these fields:
 {"action":{"action":"no_op","distance":null,"angle_degrees":null,"target":null},"answer":null,"done":false}
@@ -270,8 +270,6 @@ class OpenAIAPIAgent:
         allowed = payload.get('allowed_actions')
         if allowed is None:
             allowed = sorted(ACTION_TYPES)
-            if payload['type'] == 'qa':
-                allowed = [x for x in allowed if x not in {'pick', 'place', 'open', 'close'}] if payload.get('allow_navigation_actions') else ['no_op']
         if not isinstance(allowed, list) or not allowed or any(not isinstance(x, str) or x not in ACTION_TYPES for x in allowed):
             raise APIError('invalid_allowed_actions')
         return sorted(set(allowed))
@@ -423,7 +421,7 @@ class OpenAIAPIAgent:
             response['answer'] = value['answer']
         if payload.get('response_mode') == 'actions' and 'answer' in response:
             raise APIError('model_unrequested_answer')
-        if (payload['type'] == 'qa' or payload.get('response_mode') == 'actions_and_answer') and value['done'] and 'answer' not in response:
+        if payload.get('response_mode') == 'actions_and_answer' and value['done'] and 'answer' not in response:
             raise APIError('model_missing_answer')
         return validate_response(payload['type'], response)
 
@@ -478,7 +476,7 @@ class OpenAIAPIAgent:
                     self.summary['run_ids'].append(run_id)
                 self._save_summary()
                 return response
-            if payload['type'] not in {'step', 'qa'} or self.scene_id != payload.get('scene_id') or run_id != self.run_id:
+            if payload['type'] != 'step' or self.scene_id != payload.get('scene_id') or run_id != self.run_id:
                 raise APIError('request_sequence_mismatch')
             allowed = self._allowed(payload)
             items, frame, delivery = self._input(payload, allowed)

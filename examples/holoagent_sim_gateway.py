@@ -271,10 +271,10 @@ class SimGatewayState:
         request_type = request.get("type")
         if request_type == "session_start":
             self.reset_session()
-            return {"memory_update": {"holoagent_sim_gateway": "connected"},
-                    "gateway_status": "session_ready"}
-        if request_type == "qa":
-            return {"answer": "", "gateway_status": "qa_not_supported"}
+            sequence = request.get('sequence_context', {})
+            return {'memory_update': {'holoagent_sim_gateway': 'connected'},
+                    'gateway_status': 'session_ready',
+                    **({'sequence_reset_ack': sequence['run_id']} if sequence.get('reset_memory') else {})}
         if request_type != "step":
             return {"action": {"action": "no_op"}, "done": True,
                     "gateway_status": "unknown_request_type"}

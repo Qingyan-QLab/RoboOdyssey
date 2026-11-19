@@ -56,37 +56,34 @@ def runtime_cache(inputs, plan):
 def write_dataset(root, result, context, inputs):
     """Materialize a previously frozen test case, including authentic inventories."""
     root = Path(root)
+    if not inputs.get('scene_version'):
+        version = prepare_scene(root, context, inputs, result['plan']['names'])
+        context, inputs = version.inputs()
+        result = deepcopy(result)
+        result['plan'] = shared_plan(result['plan'], version, 'seq_fixture')
+        return write_dataset(root/'sequences/seq_fixture', result, context, inputs)
     root.mkdir(parents=True, exist_ok=False)
     (root/'private/scene').mkdir(parents=True)
-    manifest = {'schema_version': 5, 'dataset_schema': 'cl_task_sequence_v1', 'layout_version': 1,
-        'scene_id': inputs['metadata']['scene']['scene_id'], 'scene_asset': inputs.get('scene_asset'),
+    manifest = {'schema_version': 5, 'dataset_schema': 'cl_task_sequence_v1', 'layout_version': 2,
+        'scene_id': inputs['metadata']['scene']['scene_id'], 'scene_asset': {'scope': 'scene_version'},
         'runtime_contract': {'name': 'contextual_requests', 'version': 3}, 'sessions': []}
     shared = inputs.get('scene_version')
     for name in ('sequence_id', 'scene_reference'):
         if name in result['plan']:
             manifest[name] = deepcopy(result['plan'][name])
-    if shared:
-        manifest.update(layout_version=2, scene_asset={'scope': 'scene_version'})
     artifacts = {'scene_metainfo': inputs['metadata'], 'scene_understanding': inputs['understanding'],
         'manipulation': inputs['manipulation'], 'public_language_profile': inputs['language_profile'],
         'runtime_scene_cache': runtime_cache(inputs, result['plan']), 'plan': result['plan'],
         'language_catalog': result['language_catalog'], 'coverage_report': result['coverage'],
         'audit_report': {'status': 'frozen_synthetic_fixture'}}
     for name, value in artifacts.items():
-        if shared and name in shared.manifest['artifacts']:
+        if name in shared.manifest['artifacts']:
             manifest[name] = {'scope': 'scene_version', 'key': name}
         else:
             manifest[name] = f'private/{name}.json' if name != 'scene_metainfo' else 'scene_metainfo.json'
             write(root/manifest[name], value)
-    if shared:
-        for name in ('navigation', 'environment_setup'):
-            manifest[name] = {'scope': 'scene_version', 'key': name}
-    else:
-        manifest['navigation'] = 'private/navigation.npz'
-        write_navigation_npz(root/manifest['navigation'], inputs['navigation'])
-        if inputs['navigation'].get('environment_setup'):
-            manifest['environment_setup'] = 'private/environment_setup.json'
-            write(root/manifest['environment_setup'], inputs['navigation']['environment_setup'])
+    for name in ('navigation', 'environment_setup'):
+        manifest[name] = {'scope': 'scene_version', 'key': name}
     for session in result['sessions']:
         sid = session['public']['session_id']
         entry = {'session_id': sid, 'session': f'sessions/{sid}/session.json'}
@@ -97,13 +94,12 @@ def write_dataset(root, result, context, inputs):
         manifest['sessions'].append(entry)
     manifest['files'] = {p.relative_to(root).as_posix(): sha256_file(p) for p in root.rglob('*') if p.is_file()}
     write(root/'dataset_manifest.json', manifest)
-    if shared:
-        index_path = shared.root/'scene_manifest.json'
-        index = json.loads(index_path.read_text())
-        index['sequences'][manifest['sequence_id']] = {
-            'manifest': f"sequences/{manifest['sequence_id']}/dataset_manifest.json",
-            'sha256': sha256_file(root/'dataset_manifest.json'), 'revision': shared.revision}
-        write(index_path, index)
+    index_path = shared.root/'scene_manifest.json'
+    index = json.loads(index_path.read_text())
+    index['sequences'][manifest['sequence_id']] = {
+        'manifest': f"sequences/{manifest['sequence_id']}/dataset_manifest.json",
+        'sha256': sha256_file(root/'dataset_manifest.json'), 'revision': shared.revision}
+    write(index_path, index)
     return manifest
 
 
@@ -142,3 +138,13 @@ def shared_plan(plan, version, sequence_id):
     result = deepcopy(plan)
     result.update(sequence_id=sequence_id, scene_reference=version.reference())
     return result
+
+
+def result_session(root, scene_id='s', session_id='session_000'):
+    from benchmark.artifacts.layout import create_session
+    root = Path(root)
+    write(root/'manifest.json', {'artifact_schema': 'benchmark_results', 'schema_version': 2,
+        'kind': 'run', 'runtime_contract': {'name': 'contextual_requests', 'version': 3},
+        'sequences': [{'scene_id': scene_id, 'sequence_id': 'seq_fixture',
+                      'sessions_root': 'sequences/seq_fixture/sessions', 'session_ids': [session_id]}]})
+    return create_session(root, scene_id, session_id)

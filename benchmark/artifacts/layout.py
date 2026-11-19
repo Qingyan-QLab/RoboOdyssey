@@ -1,4 +1,4 @@
-"""Versioned result paths; historical flat session logs remain readable."""
+"""Current result paths, evidence references and shared JSON readers."""
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
@@ -94,14 +94,11 @@ def initialize_run(root, dataset):
     identity = dataset.sequence_identity()
     parent = manifest(root.parent.parent)
     inline = parent and parent.get('kind') in {'experiment', 'collection'}
-    entries = []
-    for scene in dataset.scene_ids():
-        sequence = identity.get('sequence_id') or 'default'
-        key = safe_id(sequence) if len(dataset.scene_ids()) == 1 else safe_id(scene) + '__' + safe_id(sequence)
-        sessions_root = ('sessions' if len(dataset.scene_ids()) == 1 else f'sessions/{safe_id(scene)}') if inline else f'sequences/{key}/sessions'
-        entries.append({'scene_id': scene, 'sequence_id': sequence,
-                        'sessions_root': sessions_root,
-                        'session_ids': [s.session_id for s in dataset.sessions(scene)]})
+    scene = identity['scene_id']
+    sequence = safe_id(identity['sequence_id'])
+    entries = [{'scene_id': scene, 'sequence_id': sequence,
+                'sessions_root': 'sessions' if inline else f'sequences/{sequence}/sessions',
+                'session_ids': [s.session_id for s in dataset.sessions(scene)]}]
     write_json(root/'manifest.json', {'artifact_schema': 'benchmark_results', 'schema_version': 2,
         'kind': 'run', 'created_at': datetime.now(timezone.utc).isoformat(),
         'sequence_identity': identity, 'dataset_schema': dataset.manifest['schema_version'],
@@ -127,7 +124,7 @@ def session_dir(root, scene, session):
     if data and data.get('kind') == 'run':
         entry = next(e for e in data['sequences'] if e['scene_id'] == scene)
         return local_path(root, entry['sessions_root']) / safe_id(session)
-    return root/'scenes'/scene/'sessions'/session
+    raise ValueError('session paths require a benchmark run manifest')
 
 
 def iter_sessions(root):
@@ -140,26 +137,23 @@ def iter_sessions(root):
             for sid in entry['session_ids']:
                 yield entry['scene_id'], sid, local_path(root, entry['sessions_root']) / safe_id(sid)
     else:
-        for path in sorted((root/'scenes').glob('*/sessions/*')):
-            yield path.parents[1].name, path.name, path
+        raise ValueError('run is missing its benchmark artifact manifest')
 
 
 def create_session(root, scene, sid):
     path = session_dir(root, scene, sid)
     path.mkdir(parents=True, exist_ok=False)
-    if manifest(root):
-        for name in ('traces', 'video'):
-            (path/name).mkdir(exist_ok=True)
+    for name in ('traces', 'video'):
+        (path/name).mkdir(exist_ok=True)
     return path
 
 
 def session_file(session, name):
     session = Path(session)
-    if (session/'traces').is_dir():
-        if name in TRACE_FILES:
-            return session/'traces'/name
-        if name in VIDEO_FILES:
-            return session/'video'/name
+    if name in TRACE_FILES:
+        return session/'traces'/name
+    if name in VIDEO_FILES:
+        return session/'video'/name
     return session/name
 
 
@@ -168,12 +162,10 @@ def video_dir(session):
 
 
 def reports_dir(root):
-    return Path(root)/'reports' if manifest(root) else Path(root)
+    return Path(root)/'reports'
 
 
-def compact_outcome(value, *, enabled):
-    if not enabled:
-        return value
+def compact_outcome(value):
     result = deepcopy(value)
     for goal in result.get('goal_results', []):
         actions = goal.pop('actions', None)
@@ -182,9 +174,7 @@ def compact_outcome(value, *, enabled):
     return result
 
 
-def compact_history(value, *, enabled):
-    if not enabled:
-        return value
+def compact_history(value):
     # Keep authoritative before/after snapshots. Only duplicated action arrays
     # are replaced by a reference; the live runtime history is untouched.
     result = deepcopy(value)

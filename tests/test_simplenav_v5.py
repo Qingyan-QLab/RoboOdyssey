@@ -1,8 +1,8 @@
+from benchmark.artifacts.layout import session_file
 from copy import deepcopy
 import json
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -91,13 +91,14 @@ class SimpleNavProtocolTests(unittest.TestCase):
         agent.policy.predict_action=lambda q:{'normalized_actions':[[float('nan'),0,0,0]]}
         with self.assertRaisesRegex(ValueError,'non-finite'):agent.handle(self.request())
 
-    def test_recovery_respects_allowed_actions_and_legacy_navigation_works(self):
+    def test_recovery_respects_allowed_actions(self):
         agent=self.agent();request=self.request(allowed_actions=['move_forward'])
         request['observation']['action_feedback']={'collision':True}
         self.assertEqual(agent.handle(request)['action']['action'],'move_forward')
         request.pop('allowed_actions')
         self.assertEqual(agent.handle(request)['action']['action'],'reset')
-        self.assertEqual(agent.handle(self.request(task_type='navigation'))['action']['action'],'move_forward')
+        with self.assertRaisesRegex(ValueError,'long_horizon'):
+            agent.handle(self.request(task_type='navigation'))
 
 
 class RecordingTests(unittest.TestCase):
@@ -178,7 +179,7 @@ class V5TraceTests(unittest.TestCase):
                 return super().step(action)
         with tempfile.TemporaryDirectory() as tmp:
             agent=Picker();ds,out,env,events=self.run_case(tmp,r,c,i,agent,Picked)
-            report=json.loads((out/'request_audit.json').read_text());first,second=report['tasks']
+            report=json.loads((out/'reports/request_audit.json').read_text());first,second=report['tasks']
             self.assertFalse(first['outcome']['success'])
             self.assertEqual(first['outcome']['state_changes']['held_object']['after'],'book_red')
             self.assertEqual(second['original_ground_truth']['goals'][0]['expected_outcome']['answer'],'kitchen')
@@ -213,30 +214,30 @@ class V5TraceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             agent=Kitchen();ds,out,env,events=self.run_case(tmp,r,c,i,agent,Satisfied,
                 video_options={'fps':2,'event_seconds':.5})
-            report=json.loads((out/'request_audit.json').read_text());first,second=report['tasks']
+            report=json.loads((out/'reports/request_audit.json').read_text());first,second=report['tasks']
             self.assertEqual(first['repair_status'],'already_satisfied')
             self.assertEqual(second['runtime_ground_truth']['goals'][0]['query'],'current_room')
             self.assertTrue(second['repair_record']['conversions'])
             self.assertNotIn('asked you',second['issued_instruction'])
             self.assertEqual(second['issued_instruction'],[q for q in agent.requests if q['type']=='step'][0]['instruction'])
-            self.assertTrue((out/second['video']['path']).is_file())
+            self.assertTrue((out/'reports'/second['video']['path']).is_file())
             self.assertEqual(write_summary(ds,out)['tasks_excluded'],1)
 
     def test_backend_error_invalidates_run_but_keeps_finalized_video(self):
         c,i,p=fixture_v3([task('ask',goal('book_red','answer',query='current_room'))]);r=select_scenario(c,p)
         class Broken(Agent):
             def request(self,payload,on_wait=None):
-                if payload['type']=='session_start':return {}
+                if payload['type']=='session_start':return {'sequence_reset_ack':payload['sequence_context']['run_id']}
                 return {'action':'no_op','agent_status':'integration_error','reason_code':'server_unreachable','error':'offline'}
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(RuntimeError,'offline'):
                 self.run_case(tmp,r,c,i,Broken(),video_options={'layout':'front','fps':2,'event_seconds':.5})
-            out=Path(tmp)/'run';session=out/'scenes/synthetic_demo/sessions/session_000'
+            out=Path(tmp)/'run';session=out/'sequences/seq_fixture/sessions/session_000'
             self.assertIsNone(json.loads((session/'metrics.json').read_text())['task_score'])
-            self.assertEqual(json.loads((session/'video_manifest.json').read_text())['run_status'],'interrupted')
-            audit=json.loads((out/'request_audit.json').read_text())
+            self.assertEqual(json.loads((session_file(session, 'video_manifest.json')).read_text())['run_status'],'interrupted')
+            audit=json.loads((out/'reports/request_audit.json').read_text())
             self.assertTrue(audit['integration_errors']);self.assertEqual(audit['incomplete_tasks'],1)
-            io=[e for e in lines(session/'agent_io.jsonl') if e['request_type']=='step']
+            io=[e for e in lines(session_file(session, 'agent_io.jsonl')) if e['request_type']=='step']
             self.assertEqual([e['direction'] for e in io],['request','response','error'])
             self.assertEqual(io[0]['payload']['instruction'],audit['tasks'][0]['issued_instruction'])
 
@@ -247,7 +248,7 @@ class V5TraceTests(unittest.TestCase):
         r=select_scenario(c,p)
         with tempfile.TemporaryDirectory() as tmp:
             agent=Agent();ds,out,_,_=self.run_case(tmp,r,c,i,agent)
-            first,second=json.loads((out/'request_audit.json').read_text())['tasks']
+            first,second=json.loads((out/'reports/request_audit.json').read_text())['tasks']
             self.assertFalse(first['outcome']['success']);self.assertEqual(second['repair_status'],'unavailable')
             self.assertTrue(second['repair_record']['failure_causes'])
             self.assertEqual(second['source_context'][0]['task_id'],'name')
@@ -260,7 +261,7 @@ class V5TraceTests(unittest.TestCase):
         class Placer(Agent):
             def request(self,payload,on_wait=None):
                 super().request(payload,on_wait)
-                if payload['type']=='session_start':return {}
+                if payload['type']=='session_start':return {'sequence_reset_ack':payload['sequence_context']['run_id']}
                 if payload.get('task_id')=='move':
                     step=sum(q.get('task_id')=='move' for q in self.requests)
                     return {'action':{'action':'pick' if step==1 else 'place','target':'reading book'},'done':step==2}
@@ -276,7 +277,7 @@ class V5TraceTests(unittest.TestCase):
                 return super().step(action)
         with tempfile.TemporaryDirectory() as tmp:
             _,out,_,_=self.run_case(tmp,r,c,i,Placer(),WrongRoom)
-            first,second=json.loads((out/'request_audit.json').read_text())['tasks']
+            first,second=json.loads((out/'reports/request_audit.json').read_text())['tasks']
             self.assertFalse(first['outcome']['success'])
             self.assertIn('geometry',first['outcome']['state_changes']['objects'][0]['changes'])
             self.assertEqual(second['runtime_ground_truth']['goals'][0]['expected_outcome']['answer'],'study')
@@ -287,7 +288,7 @@ class V5TraceTests(unittest.TestCase):
         class Interrupted(Agent):
             def request(self,payload,on_wait=None):
                 if payload['type']=='step':raise KeyboardInterrupt()
-                return {}
+                return {'sequence_reset_ack':payload['sequence_context']['run_id']}
         class BadCamera(CapturingEnv):
             def capture_review_frames(self,layout):raise RecordingError('camera disconnected')
         for agent,env_class,error in ((Interrupted(),CapturingEnv,KeyboardInterrupt),(Agent(),BadCamera,RecordingError)):
@@ -295,22 +296,22 @@ class V5TraceTests(unittest.TestCase):
                 with self.assertRaises(error):
                     self.run_case(tmp,r,c,i,agent,env_class,video_options={'layout':'front','fps':2,'event_seconds':.5})
                 close.assert_called_once()
-                session=Path(tmp)/'run/scenes/synthetic_demo/sessions/session_000'
+                session=Path(tmp)/'run/sequences/seq_fixture/sessions/session_000'
                 self.assertFalse(json.loads((session/'metrics.json').read_text())['evaluation_valid'])
-                manifest=json.loads((session/'video_manifest.json').read_text())
+                manifest=json.loads((session_file(session, 'video_manifest.json')).read_text())
                 self.assertEqual(manifest['run_status'],'interrupted')
 
     def test_unsupported_counts_as_task_failure_not_exclusion(self):
         c,i,p=fixture_v3();r=select_scenario(c,p)
         class Unsupported(Agent):
             def request(self,payload,on_wait=None):
-                if payload['type']=='session_start':return {}
+                if payload['type']=='session_start':return {'sequence_reset_ack':payload['sequence_context']['run_id']}
                 return {'action':'no_op','done':True,'agent_status':'unsupported','reason_code':'simplenav_unsupported_manipulation'}
         with tempfile.TemporaryDirectory() as tmp:
             ds,out,_,_=self.run_case(tmp,r,c,i,Unsupported())
             report=write_summary(ds,out)
             self.assertEqual(report['tasks_evaluated'],1);self.assertEqual(report['tasks_excluded'],0)
-            row=json.loads((out/'request_audit.json').read_text())['tasks'][0]
+            row=json.loads((out/'reports/request_audit.json').read_text())['tasks'][0]
             self.assertEqual(row['outcome']['agent_status'],'unsupported');self.assertFalse(row['outcome']['success'])
 
     def test_blocked_question_action_does_not_override_correct_answer(self):
@@ -322,10 +323,10 @@ class V5TraceTests(unittest.TestCase):
                 return response
         with tempfile.TemporaryDirectory() as tmp:
             ds,out,env,_=self.run_case(tmp,r,c,i,Forbidden())
-            result=json.loads((out/'request_audit.json').read_text())['tasks'][0]['outcome']
+            result=json.loads((out/'reports/request_audit.json').read_text())['tasks'][0]['outcome']
             self.assertTrue(result['success']);self.assertEqual(result['reason_code'],'success')
             self.assertIsNone(env.state['held_object']);self.assertEqual(write_summary(ds,out)['task_score'],1)
-            event=lines(next(out.glob('scenes/*/sessions/*'))/'action_changelog.jsonl')[0]
+            event=lines(session_file(next(out.glob('sequences/*/sessions/*')), 'action_changelog.jsonl'))[0]
             self.assertEqual(event['result']['reason'],'question_action_not_allowed')
 
     def test_mutation_readback_mismatch_is_logged(self):
@@ -336,8 +337,9 @@ class V5TraceTests(unittest.TestCase):
         prepared={'status':'ready','object_id':'book_red','destination_room_id':'kitchen',
                   'geometry':{'world_aabb':{'min':[4,1,0],'max':[4.2,1.2,.2]}}}
         with tempfile.TemporaryDirectory() as tmp,patch('benchmark.runtime.request_runner.prepare_mutation_v3',return_value=prepared):
-            apply_boundary(env,c,[{'changes':[]}],runtime_cache(i,p),[],Path(tmp),3)
-            log=lines(Path(tmp)/'runtime_mutations.jsonl')[0]
+            (Path(tmp)/'traces').mkdir()
+            apply_boundary(env,c,[{'changes':[]}],runtime_cache(i,p),[],Path(tmp))
+            log=lines(Path(tmp)/'traces/runtime_mutations.jsonl')[0]
             self.assertEqual(log['result']['status'],'not_applied');self.assertFalse(log['result']['confirmed'])
             self.assertEqual(log['state_changes']['objects'],[])
 
@@ -434,15 +436,15 @@ class PreflightTests(unittest.TestCase):
         c,i,p=fixture_v3();r=select_scenario(c,p)
         with tempfile.TemporaryDirectory() as tmp:
             _,out,_,_=V5TraceTests().run_case(tmp,r,c,i,Agent())
-            session=out/'scenes/synthetic_demo/sessions/session_000'
-            with (session/'runtime_events.jsonl').open('a') as stream:
+            session=out/'sequences/seq_fixture/sessions/session_000'
+            with (session_file(session, 'runtime_events.jsonl')).open('a') as stream:
                 stream.write(json.dumps({'event':'integration_error','error':'<script>evil()</script>'})+'\n{"truncated":')
             report=write_request_audit(out)
             self.assertEqual(len(report['integration_errors']),2)
-            self.assertNotIn('<script>',(out/'request_audit.html').read_text())
-            self.assertIn('&lt;script&gt;',(out/'request_audit.html').read_text())
+            self.assertNotIn('<script>',(out/'reports/request_audit.html').read_text())
+            self.assertIn('&lt;script&gt;',(out/'reports/request_audit.html').read_text())
             for name in ('request_outcomes.jsonl','video_index.jsonl','runtime_mutations.jsonl'):
-                with (session/name).open('a') as stream:stream.write('[]\n')
+                with session_file(session, name).open('a') as stream:stream.write('[]\n')
             self.assertEqual(len(write_request_audit(out)['integration_errors']),5)
 
 
