@@ -30,6 +30,7 @@ PURPOSES = {
     'docs/LAUNCH.md': '实验配置、预检、进程管理、终止和来源记录。',
     'docs/OUTPUTS.md': '实验/运行/Session 的输出文件、证据引用和当前布局契约。',
     DOCUMENT: '自动生成的完整源码目录、文件用途。',
+    'benchmark.py': '现有 CI 在源码目录使用的命令行兼容入口。',
     'roboodyssey/__main__.py': 'python -m roboodyssey 的入口，转发 CLI。',
     'roboodyssey/cli.py': '统一命令分发、环境检查与数据下载；按需导入各功能。',
     'roboodyssey/run.py': '通用评测参数、数据分流、Isaac/Agent 生命周期和结果汇总。',
