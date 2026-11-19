@@ -12,10 +12,10 @@ import unittest
 
 import numpy as np
 
-from benchmark.agents.agent_api import AgentProcess
-from benchmark.runtime.observations import ObservationClock
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.scenes.isaac_env import IsaacVLNEnv
+from roboodyssey.agents.agent_api import AgentProcess
+from roboodyssey.runtime.observations import ObservationClock
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.scenes.isaac_env import IsaacVLNEnv
 
 
 class ManualTime:
@@ -151,7 +151,7 @@ class ObservationTests(unittest.TestCase):
             script.write_text(
                 'import json, sys, time\n'
                 f'sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r})\n'
-                'from benchmark.agents.stream import serve\n'
+                'from roboodyssey.agents.stream import serve\n'
                 'received = []\n'
                 'def observe(message):\n'
                 '    received.append((message["observation"]["timing"]["frame_id"], time.monotonic()))\n'

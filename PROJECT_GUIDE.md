@@ -29,6 +29,9 @@ session.tar / 解包目录 → data → validation / launch → BenchmarkDataset
 - `evaluation/` 负责成功判定、汇总和数值诊断；`reporting/` 负责报告展示，不修改评分。
   `evaluation/report.py` 共用计分分母并汇总新旧运行；动作名称读取复用 `agents/protocol.py`，
   数值诊断复用评分器的距离计算。`artifacts/layout.py` 共用 JSONL 读取，正式计分严格报错，审阅报告保留错误行。
+- `runtime/environment.py` 定义 v5 运行器使用的环境接口。工厂交付已就绪的场景环境，运行器在同一序列内跨 Session 复用实例，结束时关闭。
+  场景变更、导航／搬运评分和诊断录像按评测配置调用对应能力。运行器将原始观测筛选为协议允许的公开字段，状态与取证留在评测端。
+- `scenes/isaac_backend.py` 管理 Isaac 应用、场景配置和预热，以及视口与运行器回调的衔接。
 - `scenes/isaac_env.py` 负责实际相机、碰撞、门、pick/place 和权威状态；`request_evidence.py` 提供私有取证。
 - `viewer/viewport.py` 管理 Isaac 视口；`viewer_overlay.py` 展示事件，不为 Agent 提供 GT。
 - `agents/` 放模型适配实现，`examples/` 放 JSONL 薄入口，配置统一放在 `configs/<model>/`。
@@ -38,20 +41,20 @@ session.tar / 解包目录 → data → validation / launch → BenchmarkDataset
 
 ## 兼容策略
 
-旧 `benchmark.runtime.simplenav_launch`／`sequence_runs`、旧报告路径及 task_repair/task_history
+旧 `roboodyssey.runtime.simplenav_launch`／`sequence_runs`、旧报告路径及 task_repair/task_history
 使用模块别名转到新实现；合并辅助模块的旧导入也继续保留。别名集中声明于各包 `__init__.py` 的
 `MODULE_ALIASES`，由顶层公共函数注册，不再逐个维护转发文件。旧路径与规范路径指向同一模块对象，
 保留已有 import 和 mock/patch；内部代码只导入规范实现。完整映射由文件清单静态提取。
-命令统一使用 `python -m benchmark`。v5 输出布局升级与输入任务契约版本无关。
+命令统一使用 `python -m roboodyssey`。v5 输出布局升级与输入任务契约版本无关。
 旧运行保持只读，分析器同时识别布局 1 与 2。历史实验 `supervise.py` 只作证据保留，
-新实验使用 `python -m benchmark experiment --config ... --execute`。
+新实验使用 `python -m roboodyssey experiment --config ... --execute`。
 
 新格式删除持久化 goal_results／history 中重复的动作数组，改为 Session 范围的动作证据引用。
 实际运行历史和权威 before/after 快照不变，不实现日志恢复运行或跨运行续接。
 
 ## 验证要求
 
-运行 `python -m benchmark check`，覆盖新旧数据、名称、修补、完整任务评分、序列隔离、
+运行 `python -m roboodyssey check`，覆盖新旧数据、名称、修补、完整任务评分、序列隔离、
 视频编码、报告、结构化目录、预检不启动服务和受管理子进程清理。
 测试数据位于 `tests/fixtures/`，只选择已冻结样例，不调用生成器；检查器禁止导入 Builder 或 GPU SDK。
 CI 使用同一完整 CPU 入口。新增数据版本同时补 tar／目录路径、完整性拒绝和状态修补回归。

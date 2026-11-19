@@ -474,8 +474,8 @@ class IsaacVLNEnv:
         if not getattr(self, '_environment_setup', None):
             return
 
-        from benchmark.contracts.raster import derive_navigation
-        from benchmark.contracts.state import geometry
+        from roboodyssey.contracts.raster import derive_navigation
+        from roboodyssey.contracts.state import geometry
         objects = [{**obj, 'geometry': geometry(obj)} for obj in self._objects.values()
                    if not obj.get('held') and obj['object_id'] != self._held_object]
         grid = derive_navigation(self._metadata['rooms'], objects, resolution=self._resolution,
@@ -491,7 +491,7 @@ class IsaacVLNEnv:
     def _restore_door_state(self) -> None:
         if getattr(self, '_environment_setup', None):
 
-            from benchmark.contracts.doors import apply_open_doors, verify_open_doors
+            from roboodyssey.contracts.doors import apply_open_doors, verify_open_doors
             apply_open_doors(self.stage, self._environment_setup)
             verify_open_doors(self.stage, self._environment_setup)
             self._door_open = {d['object_id'] for d in self._environment_setup['doors']}
@@ -642,7 +642,7 @@ class IsaacVLNEnv:
         """Freeze actual interaction origins, room labels and removable occupancy."""
         from ..evaluation.transfer import TRANSFER_POLICY
 
-        from benchmark.contracts.raster import derive_navigation
+        from roboodyssey.contracts.raster import derive_navigation
         if len(goals) != 1 or goals[0]['goal_kind'] != 'transfer':
             raise ValueError('transfer reference requires a single transfer request')
         if not getattr(self, '_environment_setup', None):

@@ -8,14 +8,14 @@ from types import SimpleNamespace
 
 from test_runtime_repair import Agent, Environment, fixture, transfer, question
 from test_task_repair import return_transfer
-from benchmark.evaluation.success import already_satisfied, evaluate_embodied_task
-from benchmark.evaluation.report import task_totals
-from benchmark.evaluation.report import write_summary
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.scenes.dataset_loader import SessionRecord
-from benchmark.artifacts.layout import write_json as write
-from benchmark.legacy.task_repair import instantiate_task
-from benchmark.contracts.legacy_templates import freeze_template
+from roboodyssey.evaluation.success import already_satisfied, evaluate_embodied_task
+from roboodyssey.evaluation.report import task_totals
+from roboodyssey.evaluation.report import write_summary
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.scenes.dataset_loader import SessionRecord
+from roboodyssey.artifacts.layout import write_json as write
+from roboodyssey.legacy.task_repair import instantiate_task
+from roboodyssey.contracts.legacy_templates import freeze_template
 
 
 class PredispatchTests(unittest.TestCase):
@@ -118,7 +118,7 @@ class PredispatchTests(unittest.TestCase):
             self.assertIsNone(metrics['task_score'])
             self.assertIsNone(metrics['reset_aware_score'])
             # HTML diagnostics must neither crash on null scores nor re-count exclusions.
-            from benchmark.reporting.legacy import collect
+            from roboodyssey.reporting.legacy import collect
             analysis = collect(output)
             self.assertIsNone(analysis['sessions'][0]['score'])
             self.assertEqual(analysis['families'], {})

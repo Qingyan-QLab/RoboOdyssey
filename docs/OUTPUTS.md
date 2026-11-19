@@ -126,7 +126,7 @@ Agent 的 `client_status=closed` 仅代表客户端收尾，不证明 benchmark 
 
 ## 可重建报告
 
-`python -m benchmark analyze <run-or-experiment> --output <新目录>` 在 CPU 上生成：
+`python -m roboodyssey analyze <run-or-experiment> --output <新目录>` 在 CPU 上生成：
 
 - `index.html`、`analysis.json`：入口、来源与分析错误。
 - `repairs/request_audit.html|json`：原文、实际请求、GT、失败来源和视频。

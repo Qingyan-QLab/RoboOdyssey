@@ -6,12 +6,13 @@ import time
 from pathlib import Path
 
 from ..data.frozen import SequenceData
-from benchmark.contracts.requests import instantiate_request, prepare_mutation, execution_events
-from benchmark.contracts.contextual import normalize_state, execution_events_v3, prepare_mutation_v3, RuntimeContractError
+from roboodyssey.contracts.requests import instantiate_request, prepare_mutation, execution_events
+from roboodyssey.contracts.contextual import normalize_state, execution_events_v3, prepare_mutation_v3, RuntimeContractError
 from ..evaluation.requests import evaluate_request, request_totals
 from ..evaluation.report import task_totals
 from ..evaluation.task_metrics import evaluate_metrics, prepare_reference
 from ..evaluation.transfer import TransferReference, collision_digest
+from .environment import RequestEnvironment, RequestEnvironmentFactory
 from .session_runner import _jsonable, _merge_memory
 from .observations import capture_observation
 from .request_events import RequestEvents, state_changes, source_context
@@ -24,14 +25,14 @@ def append(path, value):
     with Path(path).open('a') as stream:stream.write(json.dumps(value,ensure_ascii=False,allow_nan=False)+'\n')
 
 
-def actual_state(env, cache):
+def actual_state(env: RequestEnvironment, cache):
     raw=env.runtime_state_v5() if hasattr(env,'runtime_state_v5') else env.runtime_state()
     raw=deepcopy(raw)
     raw.setdefault('robot_pose',env.get_agent_pose())
     return normalize_state(cache,raw)
 
 
-def sample_observation(env, goals, *, answer_only=False):
+def sample_observation(env: RequestEnvironment, goals, *, answer_only=False):
     if answer_only:
         return capture_observation(env)
     inspected=[g['inspection_contract'] for g in goals if g.get('inspection_contract')]
@@ -84,7 +85,7 @@ def load_runtime_context(root):
     return SequenceData(root).mutation_context()
 
 
-def apply_boundary(env, context, mutations, cache, history, output, version, events=None):
+def apply_boundary(env: RequestEnvironment, context, mutations, cache, history, output, version, events=None):
     for mutation in mutations:
         before=actual_state(env,cache)
         result=(prepare_mutation_v3(context,mutation,cache,before,history) if version==3
@@ -108,7 +109,7 @@ def apply_boundary(env, context, mutations, cache, history, output, version, eve
             events.emit('mutation',sample=True,reason_code=result['status'],mutation=record)
 
 
-def run_requests(runner, scene_id, sessions, canonical_state, env_factory):
+def run_requests(runner, scene_id, sessions, canonical_state, env_factory: RequestEnvironmentFactory):
     if runner.task_ids is not None or runner.task_types is not None:
         raise RuntimeContractError('v5 evaluation requires the complete dependency sequence')
     env = events = None

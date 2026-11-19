@@ -6,12 +6,12 @@ import unittest
 import numpy as np
 
 from test_task_repair import fixture, transfer, question, completed_event
-from benchmark.artifacts.layout import write_json as write
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.scenes.dataset_loader import SessionRecord
-from benchmark.scenes.state_composer import compose_session_state
-from benchmark.evaluation.success import evaluate_embodied_task
-from benchmark.agents.protocol import validate_response
+from roboodyssey.artifacts.layout import write_json as write
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.scenes.dataset_loader import SessionRecord
+from roboodyssey.scenes.state_composer import compose_session_state
+from roboodyssey.evaluation.success import evaluate_embodied_task
+from roboodyssey.agents.protocol import validate_response
 
 
 class Agent:
@@ -146,8 +146,8 @@ class RuntimeIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError): validate_response('qa', {})
 
     def test_navigation_occupancy_tracks_moved_and_held_objects(self):
-        from benchmark.scenes.isaac_env import IsaacVLNEnv
-        from benchmark.contracts.doors import POLICY
+        from roboodyssey.scenes.isaac_env import IsaacVLNEnv
+        from roboodyssey.contracts.doors import POLICY
         from test_task_repair import entity
         env = IsaacVLNEnv.__new__(IsaacVLNEnv)
         env._np = np

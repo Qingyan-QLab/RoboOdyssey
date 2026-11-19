@@ -16,13 +16,27 @@ RoboOdyssey 是面向具身智能体的长期、多场景仿真与评测项目�
 
 ## 1. 安装与目录约定
 
-Python 3.10+。从源码目录使用主机 Python 做预检和分析：
+Python 3.10+。版本记录见 [变更日志](CHANGELOG.md)。
+
+从源码目录使用主机 Python 做预检和分析：
 
 ```bash
 cd RoboOdyssey
 ./scripts/bootstrap.sh
-./.venv/bin/python -m benchmark --help
+./.venv/bin/python -m roboodyssey --help
 ```
+
+Python 调用方使用 `roboodyssey` 包名。下列核心模块可在主机 Python 中导入：
+
+```python
+import roboodyssey
+from roboodyssey.runtime.environment import RequestEnvironment
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+```
+
+已有脚本请将 `benchmark` 导入前缀和 `python -m benchmark` 分别迁移到
+`roboodyssey` 和 `python -m roboodyssey`。
 
 Benchmark 的安装、校验、执行和测试均不依赖 Task Builder／Session Builder 源码。
 数据独立发布，推荐布局为：
@@ -44,9 +58,9 @@ Isaac Sim、SimpleNav 和模型权重分别安装在自己的环境中；主机�
 把下面的数据路径替换成实际路径，场景资产和冻结目录保持只读。
 
 ```bash
-./.venv/bin/python -m benchmark validate ../OSS/scene000010/session.tar
-./.venv/bin/python -m benchmark doctor --dataset ../OSS/scene000010/session.tar
-./.venv/bin/python -m benchmark run --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
+./.venv/bin/python -m roboodyssey validate ../OSS/scene000010/session.tar
+./.venv/bin/python -m roboodyssey doctor --dataset ../OSS/scene000010/session.tar
+./.venv/bin/python -m roboodyssey run --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
 ```
 
 首次读取 tar 时，在独立缓存解包，原始归档保持只读。默认缓存为
@@ -64,7 +78,7 @@ Isaac Sim、SimpleNav 和模型权重分别安装在自己的环境中；主机�
 ```bash
 cp configs/simplenav/managed.example.json configs/simplenav/managed.local.json
 # 编辑数据、源码、checkpoint、Python、Isaac、GPU、端口和显示设置。
-./.venv/bin/python -m benchmark preflight --config configs/simplenav/managed.local.json
+./.venv/bin/python -m roboodyssey preflight --config configs/simplenav/managed.local.json
 ```
 
 - `model_service.mode=managed`：由本次实验启动模型、等待端口就绪、监控退出并清理自己创建的进程。
@@ -81,7 +95,7 @@ cp configs/simplenav/managed.example.json configs/simplenav/managed.local.json
 ## 4. 执行实验（真实 GPU）
 
 ```bash
-./.venv/bin/python -m benchmark experiment --config configs/simplenav/managed.local.json --execute
+./.venv/bin/python -m roboodyssey experiment --config configs/simplenav/managed.local.json --execute
 ```
 
 不带 `--execute` 时只做 CPU 预检。真实执行会保存配置／来源、按需启动模型、逐序列启动 Isaac 与 Agent，
@@ -91,21 +105,21 @@ SimpleNav 的能力与录像方式见 [接入说明](docs/SIMPLENAV_V5.md)。
 其他 Agent 可直接使用通用入口，Isaac 启动器路径需替换：
 
 ```bash
-/path/to/isaacsim/python.sh -m benchmark run \
+/path/to/isaacsim/python.sh -m roboodyssey run \
   --dataset ../OSS/scene000010/session.tar --sequence seq_0001 \
   --agent-cmd "python3 /absolute/path/to/my_agent.py" \
   --max-steps 2000 --viewer --record-video --output results
 ```
 
 通用入口可使用 `--official`，约束和适用范围见 [正式配置](docs/RULES.md#official)。
-所有选项见 `python -m benchmark run --help`；`run_benchmark.sh` 仍支持旧启动方式。
+所有选项见 `python -m roboodyssey run --help`；`run_benchmark.sh` 仍支持旧启动方式。
 
 ## 5. 查看与重建报告（CPU）
 
 受管理实验默认生成 `reports/index.html`。任何时候可从完整实验根目录、单次运行目录重建到新目录：
 
 ```bash
-./.venv/bin/python -m benchmark analyze results/<run-or-experiment> --output results/<new-analysis>
+./.venv/bin/python -m roboodyssey analyze results/<run-or-experiment> --output results/<new-analysis>
 ```
 
 也支持旧 `baseline/<timestamp>_simplenav` 运行目录；不修改原日志或原完成状态。
@@ -119,7 +133,7 @@ SimpleNav 的能力与录像方式见 [接入说明](docs/SIMPLENAV_V5.md)。
 明确需要用新版重算历史运行时，使用同一入口：
 
 ```bash
-./.venv/bin/python -m benchmark analyze results/<single-run> --rescore \
+./.venv/bin/python -m roboodyssey analyze results/<single-run> --rescore \
   --reference-dataset /path/to/original-frozen-dataset --output results/<new-rescored-report>
 ```
 
@@ -157,38 +171,38 @@ results/experiment_<time>_<id>/
 ## 7. 验证和扩展
 
 ```bash
-./.venv/bin/python -m benchmark check
+./.venv/bin/python -m roboodyssey check
 ```
 
 该命令禁止导入 torch、isaacsim、omni 等模型／仿真 SDK，仅执行 CPU 回归。
 测试使用仓库内冻结的合成样例和临时目录，不需要外部数据或生成工具；完整回归需要 ffmpeg／ffprobe。
 检查器同时禁止导入两套 Builder，CI 执行完整 CPU 回归与文件清单检查。
-`python -m benchmark check --core` 保留为快速子集，完整 v5、SimpleNav 与启动管理验收使用默认 `check`。
+`python -m roboodyssey check --core` 保留为快速子集，完整 v5、SimpleNav 与启动管理验收使用默认 `check`。
 真实渲染取证检查和受控失败诊断需另行运行，见 [SimpleNav 专题](docs/SIMPLENAV_V5.md)。
 
 | 目录 | 职责 |
 |---|---|
-| `benchmark/launch/` | 配置、预检、服务管理、多序列启动、来源记录 |
-| `benchmark/data/`、`contracts/` | 发布归档、manifest、冻结语言、实际状态修补及几何计算 |
-| `benchmark/artifacts/` | 输出版本、目录索引、兼容路径与证据引用 |
-| `benchmark/validation/` | 冻结数据校验 |
-| `benchmark/agents/`、`examples/` | 协议、Agent 进程及模型适配 |
-| `benchmark/scenes/`、`viewer/` | 数据读取、Isaac 环境、取证和显示 |
-| `benchmark/runtime/` | 请求执行、连续历史、事件与录像 |
-| `benchmark/evaluation/` | 完整 GT 判定、汇总与诊断计算 |
-| `benchmark/reporting/` | HTML／CSV／JSON、修补审计与报告索引 |
-| `benchmark/legacy/` | 旧 v4 修补和历史契约 |
+| `roboodyssey/launch/` | 配置、预检、服务管理、多序列启动、来源记录 |
+| `roboodyssey/data/`、`contracts/` | 发布归档、manifest、冻结语言、实际状态修补及几何计算 |
+| `roboodyssey/artifacts/` | 输出版本、目录索引、兼容路径与证据引用 |
+| `roboodyssey/validation/` | 冻结数据校验 |
+| `roboodyssey/agents/`、`examples/` | 协议、Agent 进程及模型适配 |
+| `roboodyssey/scenes/`、`viewer/` | 数据读取、Isaac 环境、取证和显示 |
+| `roboodyssey/runtime/` | 请求执行、连续历史、事件与录像 |
+| `roboodyssey/evaluation/` | 完整 GT 判定、汇总与诊断计算 |
+| `roboodyssey/reporting/` | HTML／CSV／JSON、修补审计与报告索引 |
+| `roboodyssey/legacy/` | 旧 v4 修补和历史契约 |
 | `scripts/` | 安装、HoloAgent 启动及不能由普通运行代替的专项检查 |
 | `tests/` | CPU 回归，覆盖协议、评分、修补、历史、录像和启动管理 |
 
 完整目录及每个文件的内容/作用见 [项目文件清单](docs/FILE_MAP.md)。新增或移动文件后执行：
 
 ```bash
-python -m benchmark inventory          # 生成清单
-python -m benchmark inventory --check  # 检查遗漏/过期，不修改文件
+python -m roboodyssey inventory          # 生成清单
+python -m roboodyssey inventory --check  # 检查遗漏/过期，不修改文件
 ```
 
-常用流程统一使用 `python -m benchmark`。原验证、预检和单报告包装脚本已移除，分别使用
+常用流程统一使用 `python -m roboodyssey`。原验证、预检和单报告包装脚本已移除，分别使用
 `validate`、`preflight / experiment` 和 `analyze`。`generation/` 已移除，生成职责由外部 Builder 承担。
 文件用途集中维护于清单生成器，无需重复维护目录说明。
 
@@ -210,7 +224,7 @@ python -m benchmark inventory --check  # 检查遗漏/过期，不修改文件
 
 历史实验及整理验证的说明随对应 `results/` 保存，`docs/` 只保留当前使用和契约文档。
 
-模型适配保留 `benchmark/agents/` 实现、`examples/` 协议入口、`configs/<model>/` 参数配置的结构。
+模型适配保留 `roboodyssey/agents/` 实现、`examples/` 协议入口、`configs/<model>/` 参数配置的结构。
 当前仅发布 `configs/simplenav/` 下的配置模板；以后新增模型配置也统一放在 `configs/<model>/`，本机配置使用 `*.local.json`。
 SimpleNav 的适配器和 managed／external 服务启动均保留；新增模型按 [Agent 接入](docs/AGENT_INTEGRATION.md) 扩展，
 数据契约、任务修补和评分由 Benchmark 统一维护。
@@ -220,3 +234,8 @@ SimpleNav 的适配器和 managed／external 服务启动均保留；新增模�
 
 `results/`、本机 `.local.json` 配置、虚拟环境、缓存、权重和大型资产不纳入源码。
 来源哈希可核对版本，不能保证不同驱动、物理引擎或随机模型的结果逐位相同。
+
+## 第三方许可与资产
+
+第三方组件与外部资产的声明见 [NOTICE](NOTICE)。从生成端移入的运行时辅助代码保留原有的 [MIT 许可](roboodyssey/contracts/LICENSE)。
+Isaac Sim、外部模型与另行发布的场景数据适用各自的许可和分发条款。

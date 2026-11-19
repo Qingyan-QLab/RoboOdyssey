@@ -1,4 +1,4 @@
-"""Long-term benchmark runner package."""
+"""RoboOdyssey simulation and evaluation package."""
 
 from importlib import import_module
 import sys

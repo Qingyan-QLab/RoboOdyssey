@@ -5,8 +5,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from benchmark.evaluation.task_diagnostics import analyze_run, navigation_diagnostics, task_score
-from benchmark.reporting.task_diagnostics_report import write_diagnostics
+from roboodyssey.evaluation.task_diagnostics import analyze_run, navigation_diagnostics, task_score
+from roboodyssey.reporting.task_diagnostics_report import write_diagnostics
 
 
 def pose(x):

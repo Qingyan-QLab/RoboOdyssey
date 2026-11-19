@@ -23,7 +23,7 @@ from typing import Any
 from urllib import error, request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from benchmark.agents.stream import serve
+from roboodyssey.agents.stream import serve
 
 
 ACTION_NAMES = {

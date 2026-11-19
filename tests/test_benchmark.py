@@ -5,13 +5,13 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from benchmark.agents.protocol import validate_response
-from benchmark.evaluation.success import evaluate_embodied_task, evaluate_qa
-from benchmark.evaluation.report import write_summary
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.runtime.reference import resolve_runtime_reference
-from benchmark.scenes.dataset_loader import BenchmarkDataset, SessionRecord
-from benchmark.scenes.state_composer import compose_session_state
+from roboodyssey.agents.protocol import validate_response
+from roboodyssey.evaluation.success import evaluate_embodied_task, evaluate_qa
+from roboodyssey.evaluation.report import write_summary
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.runtime.reference import resolve_runtime_reference
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset, SessionRecord
+from roboodyssey.scenes.state_composer import compose_session_state
 from examples.holoagent_benchmark_server import (
     CompositeHoloAgentPlanner,
     FsrVlnPlanner,
@@ -76,7 +76,7 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(state['objects']['cup']['pose']['orientation'], [0, 0, 0, 1])
 
     def test_cli_dry_run_uses_explicit_temporary_dataset(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         from contextlib import redirect_stdout
         from io import StringIO
         with redirect_stdout(StringIO()) as output:
@@ -84,17 +84,17 @@ class DatasetTests(unittest.TestCase):
         self.assertIn('scene: 2 sessions', output.getvalue())
 
     def test_official_dry_run_uses_shared_validator_and_stops_on_errors(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         from contextlib import redirect_stdout
         from io import StringIO
         from unittest.mock import patch
-        with patch('benchmark.validation.dataset.validate', return_value=['invalid fixture']) as validate, \
+        with patch('roboodyssey.validation.dataset.validate', return_value=['invalid fixture']) as validate, \
              redirect_stdout(StringIO()):
             self.assertEqual(main(['run', '--dataset', str(self.dataset.root), '--official', '--dry-run']), 1)
         validate.assert_called_once_with(self.dataset.root)
 
     def test_cli_requires_dataset_before_loading_or_running(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         from contextlib import redirect_stderr
         from io import StringIO
         for args in (['run', '--dry-run'], ['doctor']):

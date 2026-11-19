@@ -6,11 +6,11 @@ from itertools import combinations
 import re
 from types import SimpleNamespace
 
-from benchmark.contracts.language import validate_public_wording
-from benchmark.contracts.references import _metadata_reference_holds
-from benchmark.contracts.state import ATTRIBUTE_KEYS, digest, geometry, same_location
-from benchmark.contracts.legacy_templates import validate_template
-from benchmark.contracts.language import historical_reference
+from roboodyssey.contracts.language import validate_public_wording
+from roboodyssey.contracts.references import _metadata_reference_holds
+from roboodyssey.contracts.state import ATTRIBUTE_KEYS, digest, geometry, same_location
+from roboodyssey.contracts.legacy_templates import validate_template
+from roboodyssey.contracts.language import historical_reference
 
 
 class RepairUnavailable(ValueError):

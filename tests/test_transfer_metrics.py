@@ -9,9 +9,9 @@ import unittest
 
 import numpy as np
 
-from benchmark.evaluation.transfer import TransferReference, TRANSFER_POLICY, transfer_metric, collision_digest
-from benchmark.evaluation.task_metrics import evaluate_metrics, prepare_reference, load_reference, METRIC_VERSION
-from benchmark.runtime.request_events import state_changes
+from roboodyssey.evaluation.transfer import TransferReference, TRANSFER_POLICY, transfer_metric, collision_digest
+from roboodyssey.evaluation.task_metrics import evaluate_metrics, prepare_reference, load_reference, METRIC_VERSION
+from roboodyssey.runtime.request_events import state_changes
 
 
 def pose(x, y=4.5, yaw=0):
@@ -254,11 +254,11 @@ class TransferCostTests(unittest.TestCase):
     def test_real_environment_capture_reproduces_raster_without_removing_background(self):
 
         try:
-            from benchmark.contracts.raster import derive_navigation
-            from benchmark.contracts.doors import POLICY
+            from roboodyssey.contracts.raster import derive_navigation
+            from roboodyssey.contracts.doors import POLICY
         except ModuleNotFoundError:
             self.skipTest('Builder source is needed for the environment raster integration check')
-        from benchmark.scenes.isaac_env import IsaacVLNEnv, EnvConfig
+        from roboodyssey.scenes.isaac_env import IsaacVLNEnv, EnvConfig
         gt, before, _ = fixture()
         rooms = [{'room_id': 'hall', 'boundary_polygon': [[0,0],[25,0],[25,9],[0,9]]},
                  {'room_id': 'study', 'boundary_polygon': [[25,0],[40,0],[40,9],[25,9]]}]
@@ -285,11 +285,11 @@ class TransferCostTests(unittest.TestCase):
 
     def test_partial_runtime_evidence_recomputes_offline_and_exports_cost_details(self):
         try:
-            from benchmark.evaluation.requests import evaluate_request
+            from roboodyssey.evaluation.requests import evaluate_request
         except ModuleNotFoundError:
             self.skipTest('Builder source is needed for the complete request integration check')
-        from benchmark.evaluation.task_diagnostics import analyze_run
-        from benchmark.reporting.task_diagnostics_report import write_diagnostics
+        from roboodyssey.evaluation.task_diagnostics import analyze_run
+        from roboodyssey.reporting.task_diagnostics_report import write_diagnostics
         gt, before, snapshot = fixture()
         metric, after, actions = run_cost(before, snapshot,
             ('move_forward', {'x': 11.5}), ('pick', {}))
@@ -330,14 +330,14 @@ class TransferCostTests(unittest.TestCase):
     def test_request_runner_captures_reference_and_actual_collision_digests(self):
         try:
             from tests.test_contextual_requests import Env, Agent, fixture_v3, select_scenario, write_dataset, BenchmarkDataset
-            from benchmark.contracts.raster import derive_navigation
-            from benchmark.contracts.doors import POLICY
+            from roboodyssey.contracts.raster import derive_navigation
+            from roboodyssey.contracts.doors import POLICY
         except ModuleNotFoundError:
             self.skipTest('Builder source is needed for the request runner integration check')
-        from benchmark.scenes.isaac_env import IsaacVLNEnv, EnvConfig
-        from benchmark.runtime.session_runner import SessionRunner
-        from benchmark.evaluation.report import write_summary
-        from benchmark.evaluation.task_diagnostics import analyze_run
+        from roboodyssey.scenes.isaac_env import IsaacVLNEnv, EnvConfig
+        from roboodyssey.runtime.session_runner import SessionRunner
+        from roboodyssey.evaluation.report import write_summary
+        from roboodyssey.evaluation.task_diagnostics import analyze_run
         from tests.test_observations import ManualTime
         compiler, inputs, plan = fixture_v3()
         rooms = inputs['metadata']['rooms']

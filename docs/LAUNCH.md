@@ -1,6 +1,6 @@
 # 配置与可复现实验入口
 
-统一入口是 `python -m benchmark`。从项目根目录调用；可以用 `.venv/bin/python` 替代 `python`。
+统一入口是 `python -m roboodyssey`。从项目根目录调用；可以用 `.venv/bin/python` 替代 `python`。
 本页只维护配置与进程管理；序列执行、预算和评分约束见 [RULES](RULES.md)。
 
 | 命令 | 作用 | 会启动 GPU 工作吗 |
@@ -74,7 +74,7 @@ external 不启动或停止模型，仅在显式执行时检查连接；不会�
 ## 入口与专项检查
 
 数据从 `OSS/<scene_id>/session.tar` 或解包目录传入，普通运行必须显式提供 `--dataset`；Bash 启动器也接受 `DATASET_DIR`。
-数据校验、预检、实验和报告统一使用 `python -m benchmark`，无需独立包装脚本。
+数据校验、预检、实验和报告统一使用 `python -m roboodyssey`，无需独立包装脚本。
 
 - `validate <dataset>`：校验归档或场景集合。
 - `preflight --config ...`：CPU 检查；不启动服务。

@@ -1,18 +1,18 @@
 # SimpleNav v5 接入与全过程审阅
 
 新实验推荐 [README](../README.md) 与 [统一实验管理](LAUNCH.md)：
-`python -m benchmark preflight --config ...` →
-`python -m benchmark experiment --config ... --execute` →
-`python -m benchmark analyze <运行目录>`。支持 managed／external 模型服务、参数化 GPU、进程清理和报告。
+`python -m roboodyssey preflight --config ...` →
+`python -m roboodyssey experiment --config ... --execute` →
+`python -m roboodyssey analyze <运行目录>`。支持 managed／external 模型服务、参数化 GPU、进程清理和报告。
 本页只说明 SimpleNav 适配和专项取证；通用 [运行与评分规则](RULES.md) 及 [输出文件契约](OUTPUTS.md) 分别维护。
 
 ## 当前接入行为
 
-`examples/simplenav_agent.py` 使用 `benchmark/agents/simplenav.py` 的可注入状态机。
+`examples/simplenav_agent.py` 使用 `roboodyssey/agents/simplenav.py` 的可注入状态机。
 旧版 `navigation` 与 v5 `long_horizon` 都能进入导航预测。v5 依据公开
 `capabilities` 路由，不读取私有 GT、模板、房间／对象 ID、修补结果或 overview。
 
-入口共用 `benchmark/agents/stream.py`，接收线程在模型预测期间持续收图。
+入口共用 `roboodyssey/agents/stream.py`，接收线程在模型预测期间持续收图。
 每张已收到的图像进入 Agent 的视觉历史，默认按 history_frames 保留最近 8 帧，
 后续模型调用使用该历史快照和当前图；WebSocket 预测仍一次一调用，不会为每张新图排队推理。
 这是 SimpleNav 的记忆／输入选择策略，Benchmark 按 [观测规则](RULES.md#observations) 逐帧发送。
@@ -36,9 +36,9 @@ SimpleNav 当前只支持导航；包含 QA 或 manipulation 的请求返回 `ag
 ```bash
 cp configs/simplenav/review.example.json configs/simplenav/review.local.json
 # 编辑 local 配置中的 checkpoint、Python、SimpleNav 源码和数据集路径。
-CUDA_VISIBLE_DEVICES='' python -B -m benchmark preflight \
+CUDA_VISIBLE_DEVICES='' python -B -m roboodyssey preflight \
   --config configs/simplenav/review.local.json --report /tmp/simplenav_preflight.json
-CUDA_VISIBLE_DEVICES='' python -B -m benchmark check
+CUDA_VISIBLE_DEVICES='' python -B -m roboodyssey check
 ```
 
 相对路径按配置文件所在目录解析。示例 checkpoint 是占位路径，预检会明确失败；
@@ -50,7 +50,7 @@ CPU 编码器及输出空间检查。统计文件选择与 SimpleNav `ActionCode
 显示服务、不加载权重，也不验证服务可用性或渲染质量；输出包含 `not_executed`。
 CPU 回归脚本额外阻止导入 torch、isaacsim、omni 等库。
 
-真实运行使用 `python -m benchmark experiment --config ... --execute`。模型服务已由外部启动时，
+真实运行使用 `python -m roboodyssey experiment --config ... --execute`。模型服务已由外部启动时，
 配置 `model_service.mode=external`；否则使用 managed 配置。此步骤会启动 Isaac / Agent 并使用 GPU。
 配置默认开启 GUI 和录像；选择范围遵守运行规则。
 
@@ -102,7 +102,7 @@ Session／Task、真实 UTC／单调时钟、帧区间、视频秒数以及是�
 新 v5 运行在 `reports/` 自动生成私有 `request_audit.json` 和 `request_audit.html`；旧布局位于运行根目录。也可在 CPU 上重建：
 
 ```bash
-CUDA_VISIBLE_DEVICES='' python -B -m benchmark analyze results/<run-directory> --output results/<new-analysis>
+CUDA_VISIBLE_DEVICES='' python -B -m roboodyssey analyze results/<run-directory> --output results/<new-analysis>
 ```
 
 报告按 Task 串联原请求、修补后请求、实际尝试下发内容、原 GT／运行时 GT、来源任务

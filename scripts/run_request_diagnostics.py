@@ -16,7 +16,7 @@ sys.path.insert(0,str(ROOT))
 
 
 def prepare(source, sequence=None):
-    from benchmark.scenes.dataset_loader import BenchmarkDataset
+    from roboodyssey.scenes.dataset_loader import BenchmarkDataset
     data = BenchmarkDataset(source, sequence_id=sequence)
     scene = data.scene_ids()[0]
     sessions = data.sessions(scene)
@@ -51,13 +51,14 @@ def main():
     app=SimulationApp({'headless':False,'active_gpu':args.gpu,'physics_gpu':args.gpu,'multi_gpu':False})
     error=None
     try:
-        from benchmark.scenes.dataset_loader import BenchmarkDataset
-        from benchmark.run import _make_env_factory,_sync_viewer
-        from benchmark.scenes.isaac_env import EnvConfig
-        from benchmark.runtime.session_runner import SessionRunner
-        from benchmark.runtime.request_runner import actual_state
-        from benchmark.evaluation.report import write_summary
-        from benchmark.viewer.viewer_overlay import ViewerOverlay
+        from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+        from roboodyssey.scenes.isaac_backend import make_env_factory
+        from roboodyssey.viewer.viewport import _sync_viewer
+        from roboodyssey.scenes.isaac_env import EnvConfig
+        from roboodyssey.runtime.session_runner import SessionRunner
+        from roboodyssey.runtime.request_runner import actual_state
+        from roboodyssey.evaluation.report import write_summary
+        from roboodyssey.viewer.viewer_overlay import ViewerOverlay
         scene=ds.scene_ids()[0];sessions=ds.sessions(scene)
         oid=truth['target']['object_ids'][0]
         cache=json.loads(sessions[0].private_paths['runtime_scene_cache'].read_text())
@@ -67,7 +68,7 @@ def main():
             output=root/mode;output.mkdir(exist_ok=False)
             options={'layout':'front_overview','fps':4,'event_seconds':.5}
             overlay=ViewerOverlay();holder={};live={}
-            factory=_make_env_factory(ds,app,viewer=True,overview_holder=holder,video_options=options,camera_config=EnvConfig())
+            factory=make_env_factory(ds,app,viewer=True,overview_holder=holder,video_options=options,camera_config=EnvConfig())
             def initialize(*a):
                 env=factory(*a);live['env']=env
                 initial=actual_state(env,cache)
@@ -83,7 +84,7 @@ def main():
                 env.set_agent_pose({'position':position.tolist(),'orientation':[0,0,math.sin(yaw/2),math.cos(yaw/2)]})
                 env._pitch=math.atan2(center[2]-position[2],math.dist(center[:2],position[:2]));env._author_camera_pose()
                 env.render_once();app.update()
-                from benchmark.runtime.request_events import state_changes
+                from roboodyssey.runtime.request_events import state_changes
                 before_inspection=actual_state(env,cache)
                 _,first_evidence=env.observe_with_evidence([{'object_id':oid,'max_distance_m':2,'min_visible_pixels':8}])
                 _,second_evidence=env.observe_with_evidence([{'object_id':oid,'max_distance_m':2,'min_visible_pixels':8}])

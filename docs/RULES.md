@@ -14,7 +14,7 @@
 Builder 负责生成与冻结任务顺序、语言模板、名称、依赖、mutation 计划及参考 GT。
 Benchmark 不重新生成任务，负责真实执行、状态回读、按冻结契约修补、记录证据和评分。
 模板表达式及修补语义由归档内的冻结 language_catalog／templates 与 Benchmark 的
-[运行契约实现](../benchmark/contracts/contextual.py) 共同约束；数据字段见 [发布数据契约](DATA_FORMAT.md)。源归档保持只读，实际 GT 与执行证据写入新的运行目录。
+[运行契约实现](../roboodyssey/contracts/contextual.py) 共同约束；数据字段见 [发布数据契约](DATA_FORMAT.md)。源归档保持只读，实际 GT 与执行证据写入新的运行目录。
 
 <a id="execution"></a>
 ## 2. 执行单位、连续性与预算
@@ -349,18 +349,18 @@ r_start = 0 时：在达标范围内为 100，否则为 0
 
 | 规则 | 对应实现 |
 |---|---|
-| 参数、正式配置、运行身份 | [run.py](../benchmark/run.py) |
-| 真实时间观测调度与漏采 | [observations.py](../benchmark/runtime/observations.py) |
-| 逐帧发送与 Agent 接收／推理解耦 | [agent_api.py](../benchmark/agents/agent_api.py)、[stream.py](../benchmark/agents/stream.py) |
-| 请求循环、账本提交、历史与异常 | [request_runner.py](../benchmark/runtime/request_runner.py) |
-| 冻结契约修补和 mutation 决策 | [contracts/contextual.py](../benchmark/contracts/contextual.py) |
-| 完整请求成功判定及排除 | [requests.py](../benchmark/evaluation/requests.py) |
-| 部分任务分、路径计费与评分版本 | [task_metrics.py](../benchmark/evaluation/task_metrics.py) |
-| 可通行网格距离与有序最短路线 | [navigation.py](../benchmark/evaluation/navigation.py) |
-| 搬运剩余成本、可移除占据与抓放证据核验 | [transfer.py](../benchmark/evaluation/transfer.py) |
-| 历史评分重算与参考地图重建 | [rescore.py](../benchmark/evaluation/rescore.py) |
-| 序列与能力统计 | [report.py](../benchmark/evaluation/report.py) |
-| 多序列汇总 | [sequences.py](../benchmark/launch/sequences.py) |
-| 导航距离、进度和恢复计算 | [task_diagnostics.py](../benchmark/evaluation/task_diagnostics.py) |
-| 旧版成功判定和统计 | [success.py](../benchmark/evaluation/success.py)、[report.py](../benchmark/evaluation/report.py) |
-| 旧版修补和历史 | [task_repair.py](../benchmark/legacy/task_repair.py)、[task_history.py](../benchmark/legacy/task_history.py) |
+| 参数、正式配置、运行身份 | [run.py](../roboodyssey/run.py) |
+| 真实时间观测调度与漏采 | [observations.py](../roboodyssey/runtime/observations.py) |
+| 逐帧发送与 Agent 接收／推理解耦 | [agent_api.py](../roboodyssey/agents/agent_api.py)、[stream.py](../roboodyssey/agents/stream.py) |
+| 请求循环、账本提交、历史与异常 | [request_runner.py](../roboodyssey/runtime/request_runner.py) |
+| 冻结契约修补和 mutation 决策 | [contracts/contextual.py](../roboodyssey/contracts/contextual.py) |
+| 完整请求成功判定及排除 | [requests.py](../roboodyssey/evaluation/requests.py) |
+| 部分任务分、路径计费与评分版本 | [task_metrics.py](../roboodyssey/evaluation/task_metrics.py) |
+| 可通行网格距离与有序最短路线 | [navigation.py](../roboodyssey/evaluation/navigation.py) |
+| 搬运剩余成本、可移除占据与抓放证据核验 | [transfer.py](../roboodyssey/evaluation/transfer.py) |
+| 历史评分重算与参考地图重建 | [rescore.py](../roboodyssey/evaluation/rescore.py) |
+| 序列与能力统计 | [report.py](../roboodyssey/evaluation/report.py) |
+| 多序列汇总 | [sequences.py](../roboodyssey/launch/sequences.py) |
+| 导航距离、进度和恢复计算 | [task_diagnostics.py](../roboodyssey/evaluation/task_diagnostics.py) |
+| 旧版成功判定和统计 | [success.py](../roboodyssey/evaluation/success.py)、[report.py](../roboodyssey/evaluation/report.py) |
+| 旧版修补和历史 | [task_repair.py](../roboodyssey/legacy/task_repair.py)、[task_history.py](../roboodyssey/legacy/task_history.py) |

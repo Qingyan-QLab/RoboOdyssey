@@ -6,17 +6,17 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 
-from benchmark.agents.simplenav import SimpleNavAgent
-from benchmark.runtime.recording import SessionRecorder, RecordingError
-from benchmark.launch.simplenav import load_config, commands, preflight
-from benchmark.runtime.request_runner import apply_boundary
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.reporting.request_audit import write_request_audit, lines
-from benchmark.evaluation.report import write_summary
+from roboodyssey.agents.simplenav import SimpleNavAgent
+from roboodyssey.runtime.recording import SessionRecorder, RecordingError
+from roboodyssey.launch.simplenav import load_config, commands, preflight
+from roboodyssey.runtime.request_runner import apply_boundary
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.reporting.request_audit import write_request_audit, lines
+from roboodyssey.evaluation.report import write_summary
 from tests.test_contextual_requests import Env, Agent, fixture_v3, task, goal, SOURCE, select_scenario, write_dataset, BenchmarkDataset
 
 
@@ -147,7 +147,7 @@ class CapturingEnv(Env):
 
 class V5TraceTests(unittest.TestCase):
     def test_unchanged_usd_aabb_keeps_reference_despite_different_geometry_encoding(self):
-        from benchmark.contracts.references import same_location
+        from roboodyssey.contracts.references import same_location
         before={'room_id':'study','geometry':{'world_aabb':{'min':[0,1,2],'max':[1,2,3]},
             'world_matrix4x4':[[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]}}
         actual=deepcopy(before);actual['geometry'].pop('world_matrix4x4');actual['held']=False
@@ -188,7 +188,7 @@ class V5TraceTests(unittest.TestCase):
             summary=write_summary(ds,out)
             self.assertIsNone(summary['task_score'])  # No transfer reference in this history-only fixture.
             self.assertEqual(summary['task_success_rate'],.5)
-            from benchmark.evaluation.task_diagnostics import analyze_run
+            from roboodyssey.evaluation.task_diagnostics import analyze_run
             (out/'run_config.json').write_text(json.dumps({'official':False}))
             diagnostic=analyze_run(out)
             self.assertEqual(diagnostic['issues'],[])
@@ -335,23 +335,45 @@ class V5TraceTests(unittest.TestCase):
         env.apply_mutation_v5=lambda prepared:None
         prepared={'status':'ready','object_id':'book_red','destination_room_id':'kitchen',
                   'geometry':{'world_aabb':{'min':[4,1,0],'max':[4.2,1.2,.2]}}}
-        with tempfile.TemporaryDirectory() as tmp,patch('benchmark.runtime.request_runner.prepare_mutation_v3',return_value=prepared):
+        with tempfile.TemporaryDirectory() as tmp,patch('roboodyssey.runtime.request_runner.prepare_mutation_v3',return_value=prepared):
             apply_boundary(env,c,[{'changes':[]}],runtime_cache(i,p),[],Path(tmp),3)
             log=lines(Path(tmp)/'runtime_mutations.jsonl')[0]
             self.assertEqual(log['result']['status'],'not_applied');self.assertFalse(log['result']['confirmed'])
             self.assertEqual(log['state_changes']['objects'],[])
 
 
+class IsaacBackendTests(unittest.TestCase):
+    def test_scene_configuration_failure_closes_environment(self):
+        from roboodyssey.scenes.isaac_backend import make_env_factory
+
+        with tempfile.TemporaryDirectory() as tmp:
+            navigation = Path(tmp) / 'navigation.npz'
+            np.savez(navigation, grid=np.zeros((2, 2)))
+            dataset = Mock()
+            dataset.navigation_path.return_value = navigation
+            app = Mock()
+            with patch('roboodyssey.scenes.isaac_env.IsaacVLNEnv') as scene:
+                env = scene.return_value
+                env.configure_scene.side_effect = ValueError('invalid scene metadata')
+                factory = make_env_factory(dataset, app)
+
+                with self.assertRaisesRegex(ValueError, 'invalid scene metadata'):
+                    factory('scene', {}, 'session')
+
+                env.close.assert_called_once_with()
+                app.update.assert_not_called()
+
+
 class PreflightTests(unittest.TestCase):
     def test_positive_camera_pitch_points_up_and_negative_pitch_down(self):
-        from benchmark.scenes.isaac_env import _camera_quaternion
+        from roboodyssey.scenes.isaac_env import _camera_quaternion
         for pitch in (.4,-.4):
             w,x,y,z=_camera_quaternion(0,pitch)
             forward_z=2*(x*z-w*y)
             self.assertAlmostEqual(forward_z,float(np.sin(pitch)))
 
     def test_inspection_uses_completed_renders_when_simulation_time_is_paused(self):
-        from benchmark.scenes.request_evidence import observe
+        from roboodyssey.scenes.request_evidence import observe
         frame={'rendering_frame':{'referenceTimeNumerator':0},
             'instance_id_segmentation':{'data':np.ones((4,4),dtype=np.uint32),'info':{'idToLabels':{'1':'/World/target'}}},
             'rgb':np.zeros((4,4,3),np.uint8)}
@@ -362,7 +384,7 @@ class PreflightTests(unittest.TestCase):
         def render():count[0]+=1;return count[0]
         env.render_once=render
         state={'objects':{'target':{'geometry':{'world_aabb':{'min':[0,0,0],'max':[1,1,1]}}}}}
-        with patch('benchmark.scenes.request_evidence.runtime_state',return_value=state):
+        with patch('roboodyssey.scenes.request_evidence.runtime_state',return_value=state):
             _,first=observe(env,[{'object_id':'target'}])
             frame['instance_id_segmentation']['data']=np.zeros((4,4),np.uint32)
             _,second=observe(env,[{'object_id':'target'}])
@@ -373,7 +395,7 @@ class PreflightTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'fresh rendered'):observe(env,[{'object_id':'target'}])
 
     def test_viewer_status_survives_session_task_reset_and_result_events(self):
-        from benchmark.viewer.viewer_overlay import ViewerOverlay
+        from roboodyssey.viewer.viewer_overlay import ViewerOverlay
         overlay=ViewerOverlay.__new__(ViewerOverlay)
         overlay._operation_count=overlay._movement_count=overlay._reset_count=0
         for name in ('_title','_body','_session','_status','_reset'):
@@ -388,17 +410,17 @@ class PreflightTests(unittest.TestCase):
         self.assertIn('FAILED',overlay._title.text)
 
     def test_default_preparation_never_executes_even_when_checks_pass(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         from contextlib import redirect_stdout
         from io import StringIO
-        with patch('benchmark.launch.simplenav.load_config',return_value={}), \
-             patch('benchmark.launch.simplenav.preflight',return_value={'ok':True}), \
-             patch('benchmark.launch.experiment.execute') as execute,redirect_stdout(StringIO()):
+        with patch('roboodyssey.launch.simplenav.load_config',return_value={}), \
+             patch('roboodyssey.launch.simplenav.preflight',return_value={'ok':True}), \
+             patch('roboodyssey.launch.experiment.execute') as execute,redirect_stdout(StringIO()):
             self.assertEqual(main(['preflight','--config','unused.json']),0)
             execute.assert_not_called()
 
     def test_resource_cleanup_uses_camera_destroy_and_attempts_all_resources(self):
-        from benchmark.scenes.isaac_env import IsaacVLNEnv
+        from roboodyssey.scenes.isaac_env import IsaacVLNEnv
         env=IsaacVLNEnv.__new__(IsaacVLNEnv)
         released=[]
         def broken():released.append('overview');raise RuntimeError('release error')
@@ -410,7 +432,7 @@ class PreflightTests(unittest.TestCase):
         env.close()
 
     def test_cpu_preflight_does_not_launch_isaac_or_connect_model(self):
-        from benchmark.launch.simplenav import ROOT
+        from roboodyssey.launch.simplenav import ROOT
         example=ROOT/'configs/simplenav/review.example.json'
         config=load_config(example)
         cmd=commands(config)
@@ -423,12 +445,12 @@ class PreflightTests(unittest.TestCase):
             if '-encoders' in argv:return SimpleNamespace(stdout='libx264')
             self.assertNotIn('import torch',argv[-1]);self.assertNotIn('import isaacsim',argv[-1])
             return SimpleNamespace(stdout=json.dumps({'numpy':True,'PIL':True}))
-        with patch('benchmark.launch.simplenav.subprocess.run',side_effect=subprocess_run), \
-             patch('benchmark.scenes.dataset_loader.BenchmarkDataset',side_effect=ValueError('fixture avoids full archive')):
+        with patch('roboodyssey.launch.simplenav.subprocess.run',side_effect=subprocess_run), \
+             patch('roboodyssey.scenes.dataset_loader.BenchmarkDataset',side_effect=ValueError('fixture avoids full archive')):
             report=preflight(config)
         self.assertFalse(report['ok'])
         self.assertIn('model_connection',report['not_executed'])
-        self.assertTrue(all('benchmark.run' not in argv for argv in invoked))
+        self.assertTrue(all('roboodyssey.run' not in argv for argv in invoked))
 
     def test_report_escapes_html_and_detects_truncated_logs(self):
         c,i,p=fixture_v3();r=select_scenario(c,p)

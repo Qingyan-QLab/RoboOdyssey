@@ -7,11 +7,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from benchmark.artifacts.layout import sha256_file, write_json
-from benchmark.data.archive import dataset_root
-from benchmark.data.frozen import SequenceData, select_sequences
-from benchmark.scenes.dataset_loader import BenchmarkDataset
-from benchmark.validation.dataset import validate
+from roboodyssey.artifacts.layout import sha256_file, write_json
+from roboodyssey.data.archive import dataset_root
+from roboodyssey.data.frozen import SequenceData, select_sequences
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+from roboodyssey.validation.dataset import validate
 from tests.frozen_data import fixture_v3, select_scenario, write_dataset
 
 
@@ -79,7 +79,7 @@ class PublishedDataTests(unittest.TestCase):
                 BenchmarkDataset(root)
 
     def test_download_accepts_published_wrapper_and_verifies_before_copy(self):
-        from benchmark.cli import _download
+        from roboodyssey.cli import _download
         from tests.test_scene_sequences import SequenceIntegrationTests
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -96,7 +96,7 @@ class PublishedDataTests(unittest.TestCase):
                     _download(archive.as_uri(), root/'downloaded', sha256_file(archive))
 
     def test_runtime_mutation_uses_published_geometry_and_actual_state(self):
-        from benchmark.contracts.requests import prepare_mutation
+        from roboodyssey.contracts.requests import prepare_mutation
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)/'data'
             c, inputs, plan = fixture_v3()
@@ -119,7 +119,7 @@ class PublishedDataTests(unittest.TestCase):
     def test_no_source_module_imports_generation_packages(self):
         import ast
         root = Path(__file__).resolve().parents[1]
-        for folder in ('benchmark', 'examples', 'scripts', 'tests'):
+        for folder in ('roboodyssey', 'examples', 'scripts', 'tests'):
             for path in (root/folder).rglob('*.py'):
                 tree = ast.parse(path.read_text(encoding='utf-8'))
                 for node in ast.walk(tree):

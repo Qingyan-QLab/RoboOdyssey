@@ -66,7 +66,7 @@ class ReconstructedReference:
             raise ValueError('navigation and environment setup disagree')
 
         from ..contracts import raster as scene_package
-        from benchmark.contracts.doors import POLICY
+        from roboodyssey.contracts.doors import POLICY
         from ..scenes.isaac_env import IsaacVLNEnv
         if self.setup.get('policy') != POLICY:
             raise ValueError('unsupported reference reconstruction door policy')

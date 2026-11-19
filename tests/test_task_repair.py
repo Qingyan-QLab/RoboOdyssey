@@ -3,11 +3,11 @@
 from copy import deepcopy
 import unittest
 
-from benchmark.contracts.state import build_runtime_cache
-from benchmark.legacy.task_repair import instantiate_task, object_reference
-from benchmark.legacy.task_history import execution_event, execution_events
-from benchmark.contracts.legacy_templates import freeze_template
-from benchmark.contracts.language import historical_reference
+from roboodyssey.contracts.state import build_runtime_cache
+from roboodyssey.legacy.task_repair import instantiate_task, object_reference
+from roboodyssey.legacy.task_history import execution_event, execution_events
+from roboodyssey.contracts.legacy_templates import freeze_template
+from roboodyssey.contracts.language import historical_reference
 
 
 def entity(oid, category, room, x=0):
@@ -118,7 +118,7 @@ class RuntimeRepairTests(unittest.TestCase):
         self.assertIn('nightstand in the bedroom', result['public_task']['instruction'])
 
     def test_replay_float_tolerance_preserves_semantic_checks(self):
-        from benchmark.contracts.legacy_templates import replay_equal
+        from roboodyssey.contracts.legacy_templates import replay_equal
         self.assertTrue(replay_equal({'length_m': 1.8884776310850244}, {'length_m': 1.888477631085024}))
         self.assertFalse(replay_equal({'length_m': 1.8884776}, {'length_m': 1.889}))
         self.assertFalse(replay_equal({'object_id': 'book'}, {'object_id': 'cup'}))

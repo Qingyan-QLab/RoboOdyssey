@@ -9,10 +9,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from benchmark.data.frozen import LegacyData as Dataset, read
-from benchmark.artifacts.layout import write_json as write
-from benchmark.legacy.task_repair import instantiate_task
-from benchmark.legacy.task_history import execution_events
+from roboodyssey.data.frozen import LegacyData as Dataset, read
+from roboodyssey.artifacts.layout import write_json as write
+from roboodyssey.legacy.task_repair import instantiate_task
+from roboodyssey.legacy.task_history import execution_events
 
 
 def check(dataset, output=None):

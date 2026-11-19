@@ -33,7 +33,7 @@ def validate(root: Path) -> list[str]:
         return [str(exc)]
     if (root / 'scene_manifest.json').is_file():
         try:
-            from benchmark.data.frozen import select_sequences
+            from roboodyssey.data.frozen import select_sequences
             return [f'{path.name}: {error}' for path in select_sequences(root) for error in validate(path)]
         except Exception as exc:
             return [str(exc)]
@@ -46,7 +46,7 @@ def validate(root: Path) -> list[str]:
         return [f"invalid dataset_manifest.json: {exc}"]
     if manifest.get('schema_version') in (4, 5):
         try:
-            from benchmark.scenes.dataset_loader import BenchmarkDataset
+            from roboodyssey.scenes.dataset_loader import BenchmarkDataset
             dataset = BenchmarkDataset(root)
             for scene_id in dataset.scene_ids():
                 asset_info = dataset._requests.asset() if dataset._requests else manifest.get('scene_asset')

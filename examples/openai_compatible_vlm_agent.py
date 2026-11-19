@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from benchmark.agents.stream import serve
+from roboodyssey.agents.stream import serve
 
 
 SYSTEM = """You are HoloAgent, an embodied agent in an indoor simulator. Return JSON only.

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-- `benchmark/` contains the evaluation runtime: Protocol v1 handling, dataset and scene loading, Isaac Sim integration, session execution, metrics, and reports.
+- `roboodyssey/` contains the evaluation runtime: Protocol v1 handling, dataset and scene loading, Isaac Sim integration, session execution, metrics, and reports.
 - `examples/` contains agent adapters and the random smoke agent; keep external-agent integration here unless a protocol capability is shared by all agents.
 - `generation/` is an optional Actor SDG entry point and is separate from benchmark execution.
 - `scripts/` provides environment checks, dataset validation, checksums, smoke runs, and result analysis. `run_benchmark.sh` is the Isaac Sim launcher.
@@ -15,7 +15,7 @@ Set up a local environment with `./scripts/bootstrap.sh` and activate `.venv`. R
 ```bash
 ./scripts/check_env.sh
 python3 -m unittest discover -s tests -v
-python3 -m benchmark.run --dry-run
+python3 -m roboodyssey.run --dry-run
 ```
 
 For an Isaac Sim smoke run, set `ISAACSIM_ROOT` and run `./scripts/run_smoke.sh`; use `--viewer` only with a graphical environment. Validate datasets with `python3 scripts/validate_dataset.py <path>` and create checksums with `python3 scripts/make_checksums.py <path>`.

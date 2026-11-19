@@ -12,12 +12,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from benchmark.artifacts.layout import initialize_run, iter_sessions, session_file, read_json, write_json
-from benchmark.launch.experiment import execute, stop_owned, Progress
-from benchmark.reporting.analyze import analyze
-from benchmark.scenes.dataset_loader import BenchmarkDataset
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.evaluation.report import write_summary
+from roboodyssey.artifacts.layout import initialize_run, iter_sessions, session_file, read_json, write_json
+from roboodyssey.launch.experiment import execute, stop_owned, Progress
+from roboodyssey.reporting.analyze import analyze
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.evaluation.report import write_summary
 from tests.test_contextual_requests import Env, Agent
 from tests.frozen_data import fixture_v3, task, goal
 from tests.frozen_data import select_scenario
@@ -57,7 +57,7 @@ class ArtifactWorkflowTests(unittest.TestCase):
                     self.assertEqual(once['completed_tasks'], 1)
                     legacy=read_json(output/'manifest.json');legacy['runtime_contract']['version']=2
                     write_json(output/'manifest.json',legacy)
-                    with patch('benchmark.evaluation.task_diagnostics.analyze_run') as diagnose:
+                    with patch('roboodyssey.evaluation.task_diagnostics.analyze_run') as diagnose:
                         old_report=analyze(output,root/'legacy_contract_report')
                         diagnose.assert_not_called()
                     self.assertTrue(old_report['ok']);self.assertTrue(old_report['notes'])
@@ -74,7 +74,7 @@ class ArtifactWorkflowTests(unittest.TestCase):
             self.assertTrue((Path(temp)/'report/index.html').exists())
 
     def test_unrecognized_artifact_version_and_escape_are_rejected(self):
-        from benchmark.artifacts.layout import manifest, local_path
+        from roboodyssey.artifacts.layout import manifest, local_path
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
             write_json(root/'manifest.json', {'schema_version':999})
@@ -83,8 +83,8 @@ class ArtifactWorkflowTests(unittest.TestCase):
 
     def test_video_artifacts_are_written_beside_their_index(self):
         from PIL import Image
-        from benchmark.runtime.request_events import RequestEvents
-        from benchmark.artifacts.layout import create_session
+        from roboodyssey.runtime.request_events import RequestEvents
+        from roboodyssey.artifacts.layout import create_session
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
             write_json(root/'manifest.json', {'artifact_schema':'benchmark_results','schema_version':2,'kind':'run',
@@ -121,12 +121,12 @@ class ExperimentWorkflowTests(unittest.TestCase):
                     root=Path(argv[argv.index('--run-directory')+1]);root.mkdir(parents=True)
                     write_json(root/'summary.json', {'evaluation_valid':True,'task_score':.5})
                 return process
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance'), \
-                 patch('benchmark.launch.experiment.commands',return_value={'cwd':temp,'benchmark_argv':['fake-isaac']}), \
-                 patch('benchmark.launch.experiment.port_ready',side_effect=[False,True]), \
-                 patch('benchmark.launch.experiment.subprocess.Popen',side_effect=spawn), \
-                 patch('benchmark.launch.experiment.os.killpg') as kill:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance'), \
+                 patch('roboodyssey.launch.experiment.commands',return_value={'cwd':temp,'benchmark_argv':['fake-isaac']}), \
+                 patch('roboodyssey.launch.experiment.port_ready',side_effect=[False,True]), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen',side_effect=spawn), \
+                 patch('roboodyssey.launch.experiment.os.killpg') as kill:
                 code,root=execute(config,checked={'ok':True})
             self.assertEqual(code,0)
             self.assertEqual(read_json(root/'status.json')['cleanup'],'completed')
@@ -138,11 +138,11 @@ class ExperimentWorkflowTests(unittest.TestCase):
     def test_external_mode_does_not_spawn_or_stop_a_model(self):
         with tempfile.TemporaryDirectory() as temp:
             config=self.config(Path(temp),'external')
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance'), \
-                 patch('benchmark.launch.experiment.port_ready',return_value=False), \
-                 patch('benchmark.launch.experiment.subprocess.Popen') as spawn, \
-                 patch('benchmark.launch.experiment.stop_owned') as stop:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance'), \
+                 patch('roboodyssey.launch.experiment.port_ready',return_value=False), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen') as spawn, \
+                 patch('roboodyssey.launch.experiment.stop_owned') as stop:
                 code,root=execute(config,checked={'ok':True})
             self.assertEqual(code,1);spawn.assert_not_called()
             self.assertTrue(all(c.args==(None,) for c in stop.call_args_list))
@@ -151,11 +151,11 @@ class ExperimentWorkflowTests(unittest.TestCase):
     def test_startup_error_keeps_explicit_invalid_summary_and_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:
             process=SimpleNamespace(pid=990003,returncode=3,poll=lambda:3,wait=lambda **kw:3)
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance'), \
-                 patch('benchmark.launch.experiment.port_ready',return_value=False), \
-                 patch('benchmark.launch.experiment.subprocess.Popen',return_value=process), \
-                 patch('benchmark.launch.experiment.os.killpg') as kill:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance'), \
+                 patch('roboodyssey.launch.experiment.port_ready',return_value=False), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen',return_value=process), \
+                 patch('roboodyssey.launch.experiment.os.killpg') as kill:
                 code,root=execute(self.config(Path(temp)),checked={'ok':True})
             self.assertEqual(code,1)
             status=read_json(root/'status.json')
@@ -166,9 +166,9 @@ class ExperimentWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             def prepare(path,**kwargs):
                 (path.parent/'STOP').touch()
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance',side_effect=prepare), \
-                 patch('benchmark.launch.experiment.subprocess.Popen') as spawn:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance',side_effect=prepare), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen') as spawn:
                 code,root=execute(self.config(Path(temp)),checked={'ok':True})
             self.assertEqual(code,1);spawn.assert_not_called()
             self.assertEqual(read_json(root/'status.json')['phase'],'interrupted')
@@ -182,17 +182,17 @@ class ExperimentWorkflowTests(unittest.TestCase):
             if process.poll() is None:process.kill();process.wait()
 
     def test_cli_planning_cannot_execute_or_probe_the_service(self):
-        from benchmark.cli import main
-        with patch('benchmark.launch.simplenav.load_config',return_value={}), \
-             patch('benchmark.launch.simplenav.preflight',return_value={'ok':True}), \
-             patch('benchmark.launch.experiment.execute') as launch, \
-             patch('benchmark.launch.experiment.port_ready') as connect, redirect_stdout(StringIO()):
+        from roboodyssey.cli import main
+        with patch('roboodyssey.launch.simplenav.load_config',return_value={}), \
+             patch('roboodyssey.launch.simplenav.preflight',return_value={'ok':True}), \
+             patch('roboodyssey.launch.experiment.execute') as launch, \
+             patch('roboodyssey.launch.experiment.port_ready') as connect, redirect_stdout(StringIO()):
             self.assertEqual(main(['preflight','--config','config.json']),0)
             self.assertEqual(main(['experiment','--config','config.json']),0)
             launch.assert_not_called();connect.assert_not_called()
 
     def test_config_resolves_paths_and_rejects_ambiguous_model_or_sequences(self):
-        from benchmark.launch.simplenav import load_config, commands
+        from roboodyssey.launch.simplenav import load_config, commands
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);path=root/'config.json';base=self.config(root)
             base.update(dataset='relative-dataset',viewer=False,record_video=False)
@@ -215,25 +215,25 @@ import sys
 from unittest.mock import patch
 
 pairs = (
-    ('benchmark.runtime.simplenav_launch', 'benchmark.launch.simplenav'),
-    ('benchmark.runtime.sequence_runs', 'benchmark.launch.sequences'),
-    ('benchmark.runtime.task_repair', 'benchmark.legacy.task_repair'),
-    ('benchmark.runtime.task_history', 'benchmark.legacy.task_history'),
-    ('benchmark.runtime.repair_audit', 'benchmark.reporting.legacy'),
-    ('benchmark.evaluation.request_audit', 'benchmark.reporting.request_audit'),
-    ('benchmark.evaluation.task_diagnostics_report', 'benchmark.reporting.task_diagnostics_report'),
-    ('benchmark.evaluation.accounting', 'benchmark.evaluation.report'),
-    ('benchmark.evaluation.request_report', 'benchmark.evaluation.report'),
-    ('benchmark.contracts.calendar', 'benchmark.contracts.language'),
-    ('benchmark.contracts.object_references', 'benchmark.contracts.references'),
-    ('benchmark.contracts.routes', 'benchmark.contracts.navigation'),
-    ('benchmark.reporting.legacy_repair', 'benchmark.reporting.legacy'),
+    ('roboodyssey.runtime.simplenav_launch', 'roboodyssey.launch.simplenav'),
+    ('roboodyssey.runtime.sequence_runs', 'roboodyssey.launch.sequences'),
+    ('roboodyssey.runtime.task_repair', 'roboodyssey.legacy.task_repair'),
+    ('roboodyssey.runtime.task_history', 'roboodyssey.legacy.task_history'),
+    ('roboodyssey.runtime.repair_audit', 'roboodyssey.reporting.legacy'),
+    ('roboodyssey.evaluation.request_audit', 'roboodyssey.reporting.request_audit'),
+    ('roboodyssey.evaluation.task_diagnostics_report', 'roboodyssey.reporting.task_diagnostics_report'),
+    ('roboodyssey.evaluation.accounting', 'roboodyssey.evaluation.report'),
+    ('roboodyssey.evaluation.request_report', 'roboodyssey.evaluation.report'),
+    ('roboodyssey.contracts.calendar', 'roboodyssey.contracts.language'),
+    ('roboodyssey.contracts.object_references', 'roboodyssey.contracts.references'),
+    ('roboodyssey.contracts.routes', 'roboodyssey.contracts.navigation'),
+    ('roboodyssey.reporting.legacy_repair', 'roboodyssey.reporting.legacy'),
 )
 for historical, canonical in pairs:
     names = (historical, canonical) if sys.argv[1] == 'historical_first' else (canonical, historical)
     assert import_module(names[0]) is import_module(names[1]), names
-with patch('benchmark.runtime.simplenav_launch.preflight', return_value={'ok': True}):
-    assert import_module('benchmark.launch.simplenav').preflight({}) == {'ok': True}
+with patch('roboodyssey.runtime.simplenav_launch.preflight', return_value={'ok': True}):
+    assert import_module('roboodyssey.launch.simplenav').preflight({}) == {'ok': True}
 for forbidden in ('torch', 'isaacsim', 'omni', 'CL_task_builder', 'CL_session_builder'):
     assert forbidden not in sys.modules, forbidden
 '''
@@ -244,9 +244,9 @@ for forbidden in ('torch', 'isaacsim', 'omni', 'CL_task_builder', 'CL_session_bu
                 self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_shared_jsonl_reader_keeps_strict_scoring_and_tolerant_audit_errors(self):
-        from benchmark.artifacts.layout import read_json_lines
-        from benchmark.evaluation.task_diagnostics import read_lines
-        from benchmark.reporting.request_audit import lines
+        from roboodyssey.artifacts.layout import read_json_lines
+        from roboodyssey.evaluation.task_diagnostics import read_lines
+        from roboodyssey.reporting.request_audit import lines
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/'events.jsonl'
             path.write_text('{"task_id":"first"}\n\n[]\n{"partial":\n{"task_id":"last"}\n')
@@ -261,11 +261,11 @@ for forbidden in ('torch', 'isaacsim', 'omni', 'CL_task_builder', 'CL_session_bu
                 list(read_lines(Path(temp)/'missing.jsonl'))
 
     def test_preflight_entries_emit_identical_reports_and_refuse_overwrite(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         with tempfile.TemporaryDirectory() as temp, \
-             patch('benchmark.launch.simplenav.load_config', return_value={}), \
-             patch('benchmark.launch.simplenav.preflight', return_value={'ok': True}), \
-             patch('benchmark.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
+             patch('roboodyssey.launch.simplenav.load_config', return_value={}), \
+             patch('roboodyssey.launch.simplenav.preflight', return_value={'ok': True}), \
+             patch('roboodyssey.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
             first, second = Path(temp)/'first.json', Path(temp)/'second.json'
             self.assertEqual(main(['preflight', '--config', 'unused', '--report', str(first)]), 0)
             self.assertEqual(main(['experiment', '--config', 'unused', '--report', str(second)]), 0)
@@ -275,26 +275,26 @@ for forbidden in ('torch', 'isaacsim', 'omni', 'CL_task_builder', 'CL_session_bu
             execute.assert_not_called()
 
     def test_failed_preflight_never_starts_either_launch_mode(self):
-        from benchmark.cli import main
-        with patch('benchmark.launch.simplenav.load_config', return_value={}), \
-             patch('benchmark.launch.simplenav.preflight', return_value={'ok': False}), \
-             patch('benchmark.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
+        from roboodyssey.cli import main
+        with patch('roboodyssey.launch.simplenav.load_config', return_value={}), \
+             patch('roboodyssey.launch.simplenav.preflight', return_value={'ok': False}), \
+             patch('roboodyssey.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
             self.assertEqual(main(['experiment', '--config', 'unused', '--execute']), 1)
             self.assertEqual(main(['preflight', '--config', 'unused']), 1)
             execute.assert_not_called()
 
     def test_analysis_preserves_non_overwrite_contract(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         with tempfile.TemporaryDirectory() as temp, \
-             patch('benchmark.evaluation.task_diagnostics.analyze_run') as analyze_run:
+             patch('roboodyssey.evaluation.task_diagnostics.analyze_run') as analyze_run:
             with self.assertRaises(FileExistsError):
                 main(['analyze', 'unused-run', '--output', temp])
             analyze_run.assert_not_called()
 
     def test_legacy_html_embedded_json_preserves_angle_brackets_safely(self):
-        from benchmark.reporting.legacy import write_report
+        from roboodyssey.reporting.legacy import write_report
         with tempfile.TemporaryDirectory() as temp, \
-             patch('benchmark.reporting.legacy.collect', return_value={'text': '</script><example>'}):
+             patch('roboodyssey.reporting.legacy.collect', return_value={'text': '</script><example>'}):
             output = Path(temp)/'report.html'
             write_report(Path(temp), output)
             embedded = output.read_text().split('const DATA=', 1)[1].split(';', 1)[0]
@@ -302,18 +302,18 @@ for forbidden in ('torch', 'isaacsim', 'omni', 'CL_task_builder', 'CL_session_bu
             self.assertEqual(json.loads(embedded)['text'], '</script><example>')
 
     def test_file_map_is_complete_and_current(self):
-        from benchmark.validation.inventory import render, ROOT, DOCUMENT
+        from roboodyssey.validation.inventory import render, ROOT, DOCUMENT
         self.assertEqual((ROOT/DOCUMENT).read_text(encoding='utf-8'), render())
 
     def test_inventory_detects_unlisted_files_without_importing_them(self):
-        from benchmark.validation.inventory import render, DOCUMENT
+        from roboodyssey.validation.inventory import render, DOCUMENT
         with tempfile.TemporaryDirectory() as temp, \
-             patch.dict('benchmark.validation.inventory.PURPOSES', {DOCUMENT: '清单'}, clear=True):
+             patch.dict('roboodyssey.validation.inventory.PURPOSES', {DOCUMENT: '清单'}, clear=True):
             root = Path(temp)
             (root/'new.py').write_text('raise RuntimeError("must never import")')
             with self.assertRaisesRegex(ValueError, 'new.py'):
                 render(root)
-            with patch.dict('benchmark.validation.inventory.PURPOSES', {'new.py': '静态检查示例'}):
+            with patch.dict('roboodyssey.validation.inventory.PURPOSES', {'new.py': '静态检查示例'}):
                 first = render(root)
                 (root/'results').mkdir()
                 (root/'results/unlisted.py').write_text('invalid Python!!!')

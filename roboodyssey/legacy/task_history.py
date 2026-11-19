@@ -2,7 +2,7 @@
 from ..agents.protocol import action_name
 from copy import deepcopy
 
-from benchmark.contracts.state import geometry
+from roboodyssey.contracts.state import geometry
 
 
 def _object_snapshot(state, oid):

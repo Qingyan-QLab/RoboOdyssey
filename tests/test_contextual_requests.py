@@ -7,11 +7,11 @@ import unittest
 from tests.frozen_data import fixture_v3, goal, task, SOURCE
 from tests.frozen_data import select_scenario
 from tests.frozen_data import write_dataset
-from benchmark.scenes.dataset_loader import BenchmarkDataset
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.evaluation.requests import evaluate_request,request_totals
-from benchmark.evaluation.report import write_summary
-from benchmark.runtime.request_runner import public_observation,resolve_action
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.evaluation.requests import evaluate_request,request_totals
+from roboodyssey.evaluation.report import write_summary
+from roboodyssey.runtime.request_runner import public_observation,resolve_action
 
 
 class Env:
@@ -43,7 +43,7 @@ class Agent:
 class RequestRunnerTests(unittest.TestCase):
     def test_navigation_partial_metric_is_saved_and_recomputed_from_actual_runtime_gt(self):
         import numpy as np
-        from benchmark.evaluation.task_diagnostics import analyze_run
+        from roboodyssey.evaluation.task_diagnostics import analyze_run
         c,i,p=fixture_v3([task('visit',goal('book_red'))])
         compiled=select_scenario(c,p)
         class WalkingEnv(Env):
@@ -75,10 +75,10 @@ class RequestRunnerTests(unittest.TestCase):
             self.assertAlmostEqual(report['summary']['formal_rule_average'],summary['score_100'])
             self.assertEqual(report['tasks'][0]['evaluation']['measurements']['steps'],1)
             # Emulate a historical run that predates live metric snapshots.
-            from benchmark.artifacts.layout import sha256_file
-            from benchmark.evaluation.rescore import ReconstructedReference
-            from benchmark.contracts.doors import POLICY
-            from benchmark.contracts.raster import derive_navigation
+            from roboodyssey.artifacts.layout import sha256_file
+            from roboodyssey.evaluation.rescore import ReconstructedReference
+            from roboodyssey.contracts.doors import POLICY
+            from roboodyssey.contracts.raster import derive_navigation
             setup={'policy':POLICY,'doors':[]}
             manifest=json.loads((archive/'dataset_manifest.json').read_text())
             metadata=json.loads((archive/manifest['scene_metainfo']).read_text())
