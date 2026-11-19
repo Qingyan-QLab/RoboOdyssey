@@ -99,6 +99,9 @@ def resolve_runtime_reference(task: dict[str, Any], ground_truth: dict[str, Any]
         offset = task.get("relative_goal", {}).get("position_offset", [0.0, 0.0])
         goals.append([float(start_position[0]) + float(offset[0]),
                       float(start_position[1]) + float(offset[1])])
+    elif result.get('fixed_target_geometry', {}).get('world_aabb'):
+        bounds = result['fixed_target_geometry']['world_aabb']
+        goals.append([(bounds['min'][i] + bounds['max'][i]) / 2 for i in (0, 1)])
     elif target_ids:
         point = _object_center(env.runtime_state(), str(target_ids[0]))
         if point is not None:

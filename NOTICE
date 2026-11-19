@@ -2,3 +2,9 @@ Third-party notices for the official scene asset bundle must be completed before
 
 NVIDIA Isaac Sim is governed by NVIDIA's applicable license and is not distributed by this Python package.
 The residential scenes reference ArchVis assets; their redistribution terms require verification by the dataset publisher.
+
+The benchmark/contracts runtime helpers and tests/fixtures synthetic regression cases
+are adapted from the MIT-licensed CL_session_builder / CL_task_builder sources.
+Their copyright and permission notice is preserved in benchmark/contracts/LICENSE.
+These sources are included in this repository; neither generation package is a runtime dependency.
+Published scene archives are distributed separately from the benchmark source.

@@ -28,4 +28,19 @@ def compose_session_state(
     previous_state: dict[str, Any], mutation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Apply the current hidden mutation to the previous actual state."""
-    return apply_changes(previous_state, (mutation or {}).get("changes", []))
+    mutation = mutation or {}
+    changes = deepcopy(mutation.get('changes', []))
+    if mutation.get('geometry_after'):
+        if len(changes) != 1:
+            raise ValueError('VLM mutation geometry requires exactly one target')
+        from .dataset_loader import canonical_state_from_metadata
+        change = changes[0]
+        obj = deepcopy(previous_state['objects'][change['object_id']])
+        obj.update(geometry=mutation['geometry_after'], held=False, support_object_id=None)
+        obj['room_id'] = change['relation_after']['room_id']
+        change['after'] = canonical_state_from_metadata({'objects': [obj]}, '')['objects'][change['object_id']]
+    result = apply_changes(previous_state, changes)
+    held = result.get('held_object')
+    if held and any(c.get('object_id') == held for c in changes) and not result['objects'][held].get('held'):
+        result['held_object'] = None
+    return result

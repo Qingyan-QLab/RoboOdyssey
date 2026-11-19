@@ -10,9 +10,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from copy import deepcopy
+import json
 import math
 from pathlib import Path
 from typing import Any
+
+
+AVATAR_INTERACTION = {
+    'pick_radius_m': 1.5, 'place_offset_m': .8,
+    'held_offset': [.75, .35, -.22],
+}
 
 
 @dataclass(frozen=True)
@@ -43,9 +50,9 @@ def _yaw_quaternion(yaw: float) -> list[float]:
 
 
 def _camera_quaternion(yaw: float, pitch: float) -> list[float]:
-    """Return scalar-first WXYZ for yaw around Z then pitch around local Y."""
+    """Return WXYZ for +X forward/+Z up; positive pitch looks upward."""
     cy, sy = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
-    cp, sp = math.cos(pitch / 2.0), math.sin(pitch / 2.0)
+    cp, sp = math.cos(pitch / 2.0), -math.sin(pitch / 2.0)
     return [cy * cp, -sy * sp, cy * sp, sy * cp]
 
 
@@ -70,10 +77,12 @@ class IsaacVLNEnv:
         # librtx.scenedb rather than raising a Python exception.
         import omni.kit.app
         app = omni.kit.app.get_app()
+        stable_frames = 0
         for _ in range(6000):
-            if context.get_stage_loading_status()[2] <= 0:
-                break
             app.update()
+            stable_frames = stable_frames + 1 if context.get_stage_loading_status()[2] <= 0 else 0
+            if stable_frames >= 12:
+                break
         else:
             raise TimeoutError(f"timed out loading Isaac Sim stage: {self.scene_asset}")
         self.stage = context.get_stage()
@@ -118,12 +127,14 @@ class IsaacVLNEnv:
         self._overview_camera_path = "/World/LongTermBenchmark/OverviewCamera"
         self._overview_marker_path = "/World/LongTermBenchmark/OverviewAgent"
         self._overview_camera = None
+        self._review_overview_sensor = None
         self._overview_marker = None
         self._overview_window = None
         self._metadata_bounds = None
         self.camera = Camera(
             prim_path=self.config.camera_prim_path,
             resolution=self.config.resolution,
+            frequency=-1,
         )
         # Isaac Sim's Camera initializes an RGB annotator by default.  The
         # optional HoloAgent bridge creates its own RGB-D render product, so
@@ -203,12 +214,17 @@ class IsaacVLNEnv:
             "focal_length_mm": float(self.config.focal_length_mm),
         }
 
-    def render_once(self) -> None:
+    def render_once(self):
         """Force one Replicator render for cameras on Kit versions where
         ``app.update()`` alone does not advance the render product."""
         try:
             import omni.replicator.core as rep
-            rep.orchestrator.step(rt_subframes=1)
+            # This environment applies high-level actions through authored USD
+            # transforms. Observation must not advance gravity/contact solving:
+            # that drifts unrelated objects and corrupts failure-cause snapshots.
+            rep.orchestrator.step(rt_subframes=1, delta_time=0.0, pause_timeline=True, wait_for_render=True)
+            self._completed_render_sequence = getattr(self, '_completed_render_sequence', 0) + 1
+            return self._completed_render_sequence
         except Exception:
             # The normal Kit update path remains valid on versions that do not
             # expose the orchestrator or when a viewer drives rendering.
@@ -224,6 +240,8 @@ class IsaacVLNEnv:
                             for raw in metadata.get("objects", []) if raw.get("object_id") and raw.get("prim_path")}
         self._pickable = {str(item["object_id"]) for item in manipulation.get("pick_place_candidates", [])}
         self._navigation = navigation
+        setup = navigation.get('environment_setup_json')
+        self._environment_setup = json.loads(str(setup)) if setup is not None else None
         self._room_ids = [str(value) for value in navigation["room_ids"].tolist()]
         self._room_labels = navigation["room_labels"]
         self._static = navigation["static_occupancy"]
@@ -233,7 +251,7 @@ class IsaacVLNEnv:
         self._origin = navigation["origin_xy"]
         self._resolution = float(navigation["resolution"])
         self._floor_height = float(navigation["floor_height"])
-        self._door_cells = self._build_door_cells(metadata)
+        self._door_cells = {} if self._environment_setup else self._build_door_cells(metadata)
         # Some cached navigation files rasterize the wall behind a door as
         # static occupancy.  Keep the opening reserved for the dynamic panel;
         # otherwise opening the door clears the panel but leaves a three-cell
@@ -259,6 +277,9 @@ class IsaacVLNEnv:
             ], dtype=float)
             self._agent_position = self._safe_position.copy()
         self._set_all_object_positions()
+        if self._environment_setup:
+            self._restore_door_state()
+            self._refresh_vlm_navigation()
         self._author_camera_pose()
         self._last_action_feedback = None
 
@@ -332,6 +353,30 @@ class IsaacVLNEnv:
         self._overview_marker = root
         self._update_overview_marker()
         return self._overview_camera_path
+
+    def setup_review_capture(self, layout: str) -> None:
+        """Attach private RGB capture only when recording was explicitly enabled."""
+        if layout == 'front_overview' and self._review_overview_sensor is None:
+            from isaacsim.sensors.camera import Camera
+            if self._overview_camera is None:
+                self.setup_overview()
+            self._review_overview_sensor = Camera(prim_path=self._overview_camera_path, resolution=(620, 420), frequency=-1)
+            self._review_overview_sensor.initialize(attach_rgb_annotator=True)
+
+    def capture_review_frames(self, layout: str) -> dict:
+        """Read rendered pixels without actions, teleportation or Agent exposure."""
+        front = self.camera.get_rgb()
+        if front is None or not getattr(front, 'size', 0):
+            raise RuntimeError('front review RGB frame unavailable')
+        result = {'front': front.copy()}
+        if layout == 'front_overview':
+            if self._review_overview_sensor is None:
+                raise RuntimeError('private overview capture was not initialized')
+            overview = self._review_overview_sensor.get_rgb()
+            if overview is None or not getattr(overview, 'size', 0):
+                raise RuntimeError('overview review RGB frame unavailable')
+            result['overview'] = overview.copy()
+        return result
 
     def _scene_xy_bounds(self) -> tuple[float, float, float, float, float, float]:
         """Return complete scene bounds from metadata, then USD, then grid."""
@@ -415,15 +460,44 @@ class IsaacVLNEnv:
         self._set_all_object_positions()
         self._restore_door_state()
         held = snapshot.get("held_object") if preserve_runtime else None
-        if held in self._objects:
+        if held in self._objects and self._objects[held].get('held', True):
             self._held_object = str(held)
             self._objects[self._held_object]["held"] = True
             self._set_kinematic(self._held_object, True)
             self._follow_held_object()
         else:
             self._held_object = None
+        self._refresh_vlm_navigation()
+
+    def _refresh_vlm_navigation(self) -> None:
+        """Keep occupancy consistent with actual moved/held objects in VLM runs."""
+        if not getattr(self, '_environment_setup', None):
+            return
+
+        from benchmark.contracts.raster import derive_navigation
+        from benchmark.contracts.state import geometry
+        objects = [{**obj, 'geometry': geometry(obj)} for obj in self._objects.values()
+                   if not obj.get('held') and obj['object_id'] != self._held_object]
+        grid = derive_navigation(self._metadata['rooms'], objects, resolution=self._resolution,
+                                 robot_radius=float(self._navigation['robot_radius']),
+                                 environment_setup=self._environment_setup)
+        for key in ('static_occupancy', 'static_base_occupancy', 'dynamic_occupancy'):
+            self._navigation[key] = self._np.asarray(grid[key], dtype=self._np.uint8)
+        self._static = self._navigation['static_occupancy']
+        self._static_base = self._navigation['static_base_occupancy']
+        self._dynamic = self._navigation['dynamic_occupancy']
+        self._dynamic_base = self._dynamic.copy()
 
     def _restore_door_state(self) -> None:
+        if getattr(self, '_environment_setup', None):
+
+            from benchmark.contracts.doors import apply_open_doors, verify_open_doors
+            apply_open_doors(self.stage, self._environment_setup)
+            verify_open_doors(self.stage, self._environment_setup)
+            self._door_open = {d['object_id'] for d in self._environment_setup['doors']}
+            for oid in self._door_open:
+                self._objects[oid]['door_open'] = True
+            return
         desired = {str(object_id) for object_id, entity in self._objects.items()
                    if str(entity.get("category", "")).lower() == "door"
                    and bool(entity.get("door_open", False))}
@@ -449,6 +523,18 @@ class IsaacVLNEnv:
                 "held_object": self._held_object,
                 "door_open": sorted(self._door_open),
                 "agent_pose": self.get_agent_pose()}
+
+    def runtime_state_v5(self):
+        from .request_evidence import runtime_state
+        return runtime_state(self)
+
+    def observe_with_evidence(self, requirements):
+        from .request_evidence import observe
+        return observe(self, requirements)
+
+    def apply_mutation_v5(self, prepared):
+        from .request_evidence import apply_mutation
+        apply_mutation(self, prepared)
 
     def set_task(self, task: dict[str, Any]) -> None:
         self._active_task = dict(task)
@@ -529,6 +615,57 @@ class IsaacVLNEnv:
     def _cell(self, position: Any) -> tuple[int, int]:
         return (int(math.floor((float(position[0]) - float(self._origin[0])) / self._resolution)),
                 int(math.floor((float(position[1]) - float(self._origin[1])) / self._resolution)))
+
+    def evaluation_navigation(self) -> dict[str, Any]:
+        """Private task-start map for reproducible CPU efficiency scoring."""
+        static = self._static_base if self._static_base is not None else self._static
+        dynamic = self._dynamic.copy()
+        # Match _walkable: open doors mask dynamic occupancy, never static walls.
+        for object_id in self._door_open:
+            for x, y in self._door_cells.get(object_id, ()):
+                dynamic[y, x] = 0
+        blocked = (static != 0) | (dynamic != 0)
+        snapshot = {'blocked': blocked.copy(), 'origin': self._origin.copy(),
+                    'resolution': self._resolution, 'radius': float(self.config.robot_radius)}
+        if self._held_object:
+            # A carried object's larger footprint is checked only against
+            # closed doors, separately from the avatar's wall clearance.
+            doors = self._np.zeros_like(blocked)
+            for object_id, cells in self._door_cells.items():
+                if object_id not in self._door_open:
+                    for x, y in cells:
+                        doors[y, x] = True
+            snapshot.update(door_blocked=doors, carried_radius=self._collision_radius())
+        return snapshot
+
+    def evaluation_transfer(self, goals) -> dict[str, Any]:
+        """Freeze actual interaction origins, room labels and removable occupancy."""
+        from ..evaluation.transfer import TRANSFER_POLICY
+
+        from benchmark.contracts.raster import derive_navigation
+        if len(goals) != 1 or goals[0]['goal_kind'] != 'transfer':
+            raise ValueError('transfer reference requires a single transfer request')
+        if not getattr(self, '_environment_setup', None):
+            raise ValueError('transfer reference requires the verified all-open-doors scene policy')
+        state = self.runtime_state_v5()
+        oid = goals[0]['target']['object_ids'][0]
+        box = self._objects[oid]['geometry']['world_aabb']
+        objects = [obj for key, obj in state['objects'].items() if key != oid and not obj.get('held')]
+        base = derive_navigation(self._metadata['rooms'], objects, resolution=self._resolution,
+            robot_radius=float(self.config.robot_radius), environment_setup=self._environment_setup)
+        if (not self._np.array_equal(base['room_labels'], self._room_labels)
+                or base['room_ids'] != self._room_ids or not self._np.allclose(base['origin_xy'], self._origin)):
+            raise ValueError('transfer room raster does not match the actual environment')
+        return {'navigation': self.evaluation_navigation(),
+            'base_blocked': self._np.asarray(base['static_base_occupancy'], dtype=bool)
+                            | self._np.asarray(base['dynamic_occupancy'], dtype=bool),
+            'room_labels': self._room_labels.copy(),
+            'metadata': {'reference_version': TRANSFER_POLICY['reference_version'],
+                **deepcopy(AVATAR_INTERACTION), 'move_step_m': float(self.config.move_step),
+                'placement_height_m': float(box['max'][2]-box['min'][2]),
+                'placement_floor_m': float(self._floor_height), 'floor_heights': state['floor_heights'],
+                'room_ids': list(self._room_ids), 'pickable_ids': sorted(self._pickable),
+                'target_id': oid, 'initial_state': state}}
 
     def _collision_radius(self) -> float:
         """Return the footprint radius for the avatar and any carried object.
@@ -918,8 +1055,11 @@ class IsaacVLNEnv:
             return
         forward = self._np.array([math.cos(self._yaw), math.sin(self._yaw), 0.0])
         right = self._np.array([-math.sin(self._yaw), math.cos(self._yaw), 0.0])
-        position = self._agent_position + forward * 0.75 + right * 0.35 + self._np.array([0.0, 0.0, -0.22])
+        offsets = AVATAR_INTERACTION['held_offset']
+        position = self._agent_position + forward * offsets[0] + right * offsets[1] + self._np.array([0.0, 0.0, offsets[2]])
         self._set_object_world_position(self._held_object, position)
+        self._objects[self._held_object]['room_id'] = self._room_at(position)
+        self._objects[self._held_object]['support_object_id'] = None
 
     def _pick(self, action: dict[str, Any]) -> dict[str, Any]:
         object_id = str(action.get("object_id") or action.get("target") or "")
@@ -934,7 +1074,7 @@ class IsaacVLNEnv:
         if self._held_object is not None:
             return {"success": False, "reason": "already_holding", "object_id": self._held_object}
         distance = float(self._np.linalg.norm(self._get_object_world_position(object_id)[:2] - self._agent_position[:2]))
-        if distance > 1.5:
+        if distance > AVATAR_INTERACTION['pick_radius_m']:
             return {"success": False, "reason": "object_out_of_reach", "object_id": object_id, "distance": distance}
         self._held_object = object_id
         self._objects[object_id]["held"] = True
@@ -977,12 +1117,14 @@ class IsaacVLNEnv:
         if requested_room and requested_room != room_id:
             return {"success": False, "reason": "agent_not_in_requested_room",
                     "object_id": self._held_object, "room_id": room_id}
-        position = self._agent_position + self._np.array([math.cos(self._yaw), math.sin(self._yaw), 0.0]) * 0.8
+        position = self._agent_position + self._np.array([math.cos(self._yaw), math.sin(self._yaw), 0.0]) * AVATAR_INTERACTION['place_offset_m']
         bounds = self._objects[object_id].get("geometry", {}).get("world_aabb", {})
         height = float(bounds.get("max", [0, 0, .1])[2]) - float(bounds.get("min", [0, 0, 0])[2])
         position[2] = self._floor_height + max(0.025, height / 2.0)
         self._set_object_world_position(object_id, position)
         self._objects[object_id]["room_id"] = room_id
+        self._objects[object_id]['support_object_id'] = None
+        self._objects[object_id]['placement_surface'] = 'floor'
         self._objects[object_id]["held"] = False
         self._set_kinematic(object_id, False)
         self._held_object = None
@@ -1064,6 +1206,8 @@ class IsaacVLNEnv:
         self._author_camera_pose()
         self._update_overview_marker()
         self._follow_held_object()
+        if name in {'pick', 'place'} and info.get('success'):
+            self._refresh_vlm_navigation()
         if name != "reset":
             self._reset_applied = False
         self._last_action_feedback = deepcopy(info)
@@ -1121,6 +1265,30 @@ class IsaacVLNEnv:
             self._holoagent_sensor_bridge.publish_pose(self.get_camera_pose())
         return result
 
+    def capture_observation(self) -> dict[str, Any]:
+        """Complete a fresh RGB-D render without advancing world physics.
+
+        Called by the 2 Hz wall-clock sampler, always on Isaac's main thread.
+        observe() alone may return the previous camera buffer after a move.
+        """
+        self._follow_held_object()
+        if self.render_once() is None:
+            raise RuntimeError('fresh observation render unavailable')
+        frame = self.camera.get_current_frame()
+        rgb = frame.get('rgba') if isinstance(frame, dict) else None
+        if rgb is not None:
+            rgb = rgb[..., :3]
+        elif isinstance(frame, dict):
+            rgb = frame.get('rgb')
+        if rgb is None:
+            raise RuntimeError('fresh observation has no corresponding RGB frame')
+        observation = self.observe()
+        observation['images'] = {'front': rgb}
+        # Do not combine new RGB with depth cached from an earlier render.
+        observation['depth'] = frame.get('distance_to_image_plane')
+        self.observation_frame_id = getattr(self, 'observation_frame_id', 0) + 1
+        return observation
+
     def try_observe(self) -> dict[str, Any] | None:
         try:
             value = self.observe()
@@ -1152,10 +1320,17 @@ class IsaacVLNEnv:
 
     def close(self) -> None:
         self._overview_window = None
-        if self._holoagent_sensor_bridge is not None:
-            self._holoagent_sensor_bridge.close()
-            self._holoagent_sensor_bridge = None
-        try:
-            self.camera.close()
-        except Exception:
-            pass
+        errors = []
+        for attribute in ('_review_overview_sensor', '_holoagent_sensor_bridge', 'camera'):
+            resource = getattr(self, attribute, None)
+            if resource is not None:
+                try:
+                    # Isaac Camera uses destroy(); bridges/wrappers use close().
+                    release = getattr(resource, 'destroy', None) or resource.close
+                    release()
+                except Exception as exc:
+                    errors.append(exc)
+                finally:
+                    setattr(self, attribute, None)
+        if errors:
+            raise RuntimeError('failed to close environment resources: ' + '; '.join(map(str, errors))) from errors[0]

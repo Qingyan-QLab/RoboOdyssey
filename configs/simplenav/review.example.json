@@ -1,0 +1,27 @@
+{
+  "dataset": "../../../OSS/scene000010/session.tar",
+  "simplenav_root": "../../../../../SimpleNav",
+  "checkpoint": "/path/to/reviewed/simplenav/checkpoint",
+  "agent_python": "/path/to/simplenav/environment/bin/python",
+  "isaac_python": "../../../../python.sh",
+  "output": "../../results/simplenav_v5",
+  "url": "ws://127.0.0.1:10093",
+  "unnorm_key": null,
+  "max_steps": 2000,
+  "agent_timeout": 120,
+  "history_frames": 8,
+  "collision_reset_threshold": 5,
+  "viewer": true,
+  "record_video": true,
+  "video_layout": "front_overview",
+  "video_fps": 10,
+  "video_event_seconds": 0.5,
+  "ffmpeg": "ffmpeg",
+  "model_service": {
+    "mode": "external"
+  },
+  "auto_analyze": true,
+  "sequences": [
+    "seq_0001"
+  ]
+}

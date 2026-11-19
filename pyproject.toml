@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "longterm-indoor-benchmark"
 version = "0.1.0"
-description = "Long-horizon VLN evaluation harness for Isaac Sim"
+description = "Standalone long-horizon indoor evaluation harness for Isaac Sim"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.23", "Pillow>=9.0"]
 
@@ -14,3 +15,7 @@ include = ["benchmark*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+"benchmark.agents" = ["protocol_schema.json"]
+"benchmark.contracts" = ["LICENSE"]

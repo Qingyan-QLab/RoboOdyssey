@@ -1,147 +1,214 @@
 # Long-Term Indoor Benchmark
 
-面向 Isaac Sim 的长程视觉语言导航、操作和问答评测工具。一次运行按数据集中的
-session 顺序执行任务，并将动作、状态和指标保存到结果目录。
+在 Isaac Sim 中执行长程导航、搬运和问答任务。当前主流程直接读取 **schema 5／contextual_requests v3** 发布数据，
+按真实世界状态修补请求和 GT，连续执行各 Session，再输出任务评分、运行审计和诊断视频。
 
-## 快速开始
+数据生成端负责场景理解、任务生成、冻结与审核；Benchmark 独立负责数据读取、真实执行、证据采集、修补和评分。
+运行顺序、正式配置、修补、评分与版本差异统一见 [运行与评分规则](docs/RULES.md)。
 
-### 1. 安装依赖
+## 1. 安装与目录约定
 
-需要 Python 3.10 或更高版本。下面的脚本会在项目目录创建 `.venv`，并安装项目所需的
-主机侧依赖；不要求用户预先准备虚拟环境：
+Python 3.10+。从源码目录使用主机 Python 做预检和分析：
 
 ```bash
-git clone <repository-url>
 cd longterm_benchmark
 ./scripts/bootstrap.sh
+./.venv/bin/python -m benchmark --help
 ```
 
-后文命令使用项目内的 `.venv/bin/python`，因此不依赖当前 shell 是否执行过
-`source .venv/bin/activate`。如果希望直接输入 `python`，可以额外执行该命令激活环境。
-
-主机 Python 环境用于数据校验和 dry-run；真正运行 benchmark 还需要单独安装兼容版本的
-Isaac Sim，并设置：
-
-```bash
-export ISAACSIM_ROOT=/absolute/path/to/isaacsim
-```
-
-也可以直接设置 Isaac Sim 启动器：`export ISAACSIM_PYTHON=/path/to/isaacsim/python.sh`。
-
-### 2. 放置场景数据
-
-将每个数据集放在 `dataset/<dataset-name>/` 下。目录根部必须有
-`dataset_manifest.json`，manifest 中的路径相对于该目录解析：
+Benchmark 的安装、校验、执行和测试均不依赖 Task Builder／Session Builder 源码。
+数据独立发布，推荐布局为：
 
 ```text
-dataset/<dataset-name>/
-├── dataset_manifest.json
-└── scenes/<scene-id>/
-    ├── scene.usdz
-    ├── scene_metainfo.json
-    └── sessions/
-        ├── scene_build.json
-        ├── navigation.npz
-        ├── manipulation.json
-        └── session_NNN/
-            ├── session.json
-            ├── mutation.json
-            └── ground_truth.json
+tools/
+├── OSS/scene000010/session.tar
+└── longterm_benchmark/
 ```
 
-仓库自带示例数据 `dataset/scene000430_after_changes`，也是默认数据集。外部数据可直接
-放在其他目录，并通过 `--dataset` 或 `DATASET_DIR` 指定。先校验数据：
+Isaac Sim、SimpleNav 和模型权重分别安装在自己的环境中；主机环境只需 numpy、Pillow。
+录像需要提供 CPU libx264 的 ffmpeg，视频回归还需 ffprobe。不要用主机 pip 安装仿真或模型全套依赖。
+没有 Isaac／GPU 也能进行数据校验、预检、回归和已有结果分析。
+
+## 2. 校验与预览数据（CPU）
+
+本仓库不内置 dataset，也不生成任务或场景资产。请使用发布的 `OSS/<scene_id>/session.tar` 或已解包的场景集合目录，
+`run` 和 `doctor` 必须显式提供 `--dataset`；`run_benchmark.sh` 也可通过 `DATASET_DIR` 指定。
+把下面的数据路径替换成实际路径，场景资产和冻结目录保持只读。
 
 ```bash
-./.venv/bin/python scripts/validate_dataset.py dataset/<dataset-name>
-# 可选：生成 SHA-256 清单
-./.venv/bin/python scripts/make_checksums.py dataset/<dataset-name>
+./.venv/bin/python -m benchmark validate ../OSS/scene000010/session.tar
+./.venv/bin/python -m benchmark doctor --dataset ../OSS/scene000010/session.tar
+./.venv/bin/python -m benchmark run --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
 ```
 
-### 3. 检查并预览任务
+首次读取 tar 时，在独立缓存解包，原始归档保持只读。默认缓存为
+`${XDG_CACHE_HOME:-~/.cache}/longterm-indoor-benchmark/datasets/<归档SHA-256>/`，
+可用 `BENCHMARK_DATA_CACHE` 指定有足够空间的位置；每次加载仍校验 manifest 和文件哈希。
+支持的包内层级、版本和私有数据边界见 [发布数据契约](docs/DATA_FORMAT.md)。
 
-以下命令不启动 Isaac Sim：
+场景集合可使用 `--sequence seq_0001`、重复 `--sequence` 或 `--all-sequences`；
+校验整个集合不需要选择序列。选择范围和连续性要求见 [执行规则](docs/RULES.md#execution)。
+
+## 3. 准备 SimpleNav 配置（CPU）
+
+完整实验使用统一配置与管理入口；无需复制历史结果目录中的 supervisor。
 
 ```bash
-./.venv/bin/python -m benchmark doctor --dataset dataset/<dataset-name>
-./.venv/bin/python -m benchmark run --dataset dataset/<dataset-name> --dry-run
-# 等价写法
-./run_benchmark.sh --dataset dataset/<dataset-name> --dry-run
+cp configs/simplenav/managed.example.json configs/simplenav/managed.local.json
+# 编辑数据、源码、checkpoint、Python、Isaac、GPU、端口和显示设置。
+./.venv/bin/python -m benchmark preflight --config configs/simplenav/managed.local.json
 ```
 
-### 4. 运行 benchmark
+- `model_service.mode=managed`：由本次实验启动模型、等待端口就绪、监控退出并清理自己创建的进程。
+- `model_service.mode=external`：连接已经运行的服务，不启动或关闭该模型服务。
+- `gpu` 是 Isaac/Vulkan 设备索引；`model_service.gpu_uuid` 是模型的 CUDA 设备 UUID。
+- GUI 可继承当前 `DISPLAY`／`XAUTHORITY`，或在 `environment` 中显式配置，不硬编码本机桌面路径。
+- `sequences: ["seq_0001", "seq_0002"]` 或 `all_sequences: true` 用于场景集合。
+- 相对文件路径按配置文件目录解析。示例中的占位路径必须替换；预检失败不会启动进程。
 
-最小 smoke 运行（默认使用 `random_agent.py`，每个任务最多 20 步）：
+预检只验证归档、资产、源码、包可发现性、动作统计、编码器和输出目录；不会启动 Isaac、
+导入模型、连接服务或占用 GPU。外部服务的实际权重身份由服务管理者保证。
+配置细节、启动边界和复现信息见 [实验管理](docs/LAUNCH.md)。
+
+## 4. 执行实验（真实 GPU）
 
 ```bash
-./scripts/run_smoke.sh
+./.venv/bin/python -m benchmark experiment --config configs/simplenav/managed.local.json --execute
 ```
 
-指定数据集、agent 和步数：
+不带 `--execute` 时只做 CPU 预检。真实执行会保存配置／来源、按需启动模型、逐序列启动 Isaac 与 Agent，
+结束后生成报告并清理进程。`Ctrl-C`／SIGTERM 或在实验根目录创建 `STOP` 文件请求终止。
+SimpleNav 的能力与录像方式见 [接入说明](docs/SIMPLENAV_V5.md)。
+
+其他 Agent 可直接使用通用入口，Isaac 启动器路径需替换：
 
 ```bash
-./run_benchmark.sh \
-  --dataset dataset/<dataset-name> \
-  --agent-cmd "python3 ${PWD}/examples/random_agent.py" \
-  --max-steps 2000
+/path/to/isaacsim/python.sh -m benchmark run \
+  --dataset ../OSS/scene000010/session.tar --sequence seq_0001 \
+  --agent-cmd "python3 /absolute/path/to/my_agent.py" \
+  --max-steps 2000 --viewer --record-video --output results
 ```
 
-正式评测使用完整数据集配置：
+通用入口可使用 `--official`，约束和适用范围见 [正式配置](docs/RULES.md#official)。
+所有选项见 `python -m benchmark run --help`；`run_benchmark.sh` 仍支持旧启动方式。
+
+## 5. 查看与重建报告（CPU）
+
+受管理实验默认生成 `reports/index.html`。任何时候可从完整实验根目录、单次运行目录重建到新目录：
 
 ```bash
-./run_benchmark.sh --official \
-  --dataset dataset/<dataset-name> \
-  --agent-cmd "python3 ${PWD}/examples/my_agent.py"
+./.venv/bin/python -m benchmark analyze results/<run-or-experiment> --output results/<new-analysis>
 ```
 
-服务器无显示器时保持默认 headless 模式；本地查看 Isaac Sim 窗口时追加 `--viewer`。
-常用筛选参数有 `--scene scene000430`、`--session session_000` 和
-`--task-type navigation|manipulation|qa`。运行参数完整列表：
+也支持旧 `baseline/<timestamp>_simplenav` 运行目录；不修改原日志或原完成状态。
+统一入口按格式生成修补审计、逐任务 GT／任务分、导航距离／进度、路径／碰撞和逐次 reset 对照，
+含 HTML、JSON、CSV 和视频跳转。缺失证据会列为分析错误，不悄悄减少分母。
+
+新运行使用 `progress_path_v3`：任务分统一为 0–100，导航按最终有序进度×路径效率计分，
+搬运按剩余交付成本的进展×执行成本效率计分，问答只按答案正确性计 100／0，没有问答过程分。
+完整成功率独立统计。最终进度、最佳进度各占一列。旧运行保留原评分版本，具体定义见下方规则文档。
+
+明确需要用新版重算历史运行时，使用同一入口：
 
 ```bash
-./.venv/bin/python -m benchmark run --help
+./.venv/bin/python -m benchmark analyze results/<single-run> --rescore \
+  --reference-dataset /path/to/original-frozen-dataset --output results/<new-rescored-report>
 ```
 
-## Agent 接入
+已有评分地图时可省略 `--reference-dataset`。历史地图重建的验证范围和限制见 [重算规则](docs/RULES.md#rescoring)。
 
-Agent 通过 JSONL protocol 与 benchmark 通信。可直接使用：
+评分口径见 [运行与评分规则](docs/RULES.md)，文件位置见 [输出文件契约](docs/OUTPUTS.md)。
 
-- `examples/random_agent.py`：协议 smoke 测试；
-- `examples/simplenav_agent.py`：SimpleNav；
-- `examples/openai_compatible_vlm_agent.py`：OpenAI-compatible VLM；
-- `examples/holoagent_agent.py`：HoloAgent 网关。
+## 6. 输出结构
 
-例如连接 OpenAI-compatible VLM：
-
-```bash
-VLM_BASE_URL=http://127.0.0.1:8000/v1 \
-./run_benchmark.sh --agent-cmd \
-  "python3 ${PWD}/examples/openai_compatible_vlm_agent.py --model my-vlm"
-```
-
-HoloAgent 的传感器、网关和服务配置见 [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md)。
-
-## 结果与分析
-
-结果默认写入 `results/YYYYMMDD_HHMMSS_<agent>/`，包括 `run_config.json`、`run.log`、
-`summary.json` 以及每个 session 的 JSONL 和指标文件。分析结果：
-
-```bash
-./.venv/bin/python scripts/analyze_result.py results/<run-directory>
-```
-
-`results/`、虚拟环境、缓存和大型数据资产默认被 `.gitignore` 排除。发布大型
-`scene.usdz` 时请使用 Git LFS 或对象存储，并同时提供 manifest、SHA-256 和下载说明。
-
-## 目录
+受管理实验使用结果布局 v2：
 
 ```text
-benchmark/   # 数据加载、Isaac Sim 环境、session runner、评测和协议
-examples/    # agent 适配器
-scripts/     # 环境安装、校验、运行和结果分析
-dataset/     # 示例数据集或数据清单
-docs/        # 协议、指标、数据卡和集成说明
-tests/       # 不依赖 GPU 的测试
+results/experiment_<time>_<id>/
+├── manifest.json             # 格式版本及序列目录索引
+├── config.json / preflight.json / provenance.json
+├── status.json / progress.json / processes.json / runs.json
+├── summary.json              # 按序列汇总，异常不可被忽略
+├── logs/                     # 模型、各序列 Isaac 启动日志
+├── sequences/<sequence_id>/
+│   ├── manifest.json / run_config.json / provenance.json
+│   ├── status.json / summary.json / logs/
+│   ├── sessions/<session_id>/
+│   │   ├── metrics.json / name_ledger.json
+│   │   ├── traces/           # 请求、GT、动作、历史、mutation、错误
+│   │   ├── evaluation/       # 每任务真实碰撞地图及校验哈希，供 CPU 复算
+│   │   └── video/            # review.mp4、索引和编码记录
+│   └── reports/              # 自动修补审计
+└── reports/                  # 统一报告索引及每序列评分诊断
 ```
 
-协议和扩展边界见 [`PROJECT_GUIDE.md`](PROJECT_GUIDE.md)。
+通用单次 `run` 也使用 v2，但 Session 位于该运行的 `sequences/<sequence_id>/sessions/`。
+旧格式仍按 `scenes/<scene_id>/sessions/` 读取；旧实验文件不会被迁移或覆盖。
+原始证据长期保留，`reports/` 可重新生成。字段来源与版本兼容见 [OUTPUTS.md](docs/OUTPUTS.md)。
+
+## 7. 验证和扩展
+
+```bash
+./.venv/bin/python -m benchmark check
+```
+
+该命令禁止导入 torch、isaacsim、omni 等模型／仿真 SDK，仅执行 CPU 回归。
+测试使用仓库内冻结的合成样例和临时目录，不需要外部数据或生成工具；完整回归需要 ffmpeg／ffprobe。
+检查器同时禁止导入两套 Builder，CI 执行完整 CPU 回归与文件清单检查。
+`python -m benchmark check --core` 保留为快速子集，完整 v5、SimpleNav 与启动管理验收使用默认 `check`。
+真实渲染取证检查和受控失败诊断需另行运行，见 [SimpleNav 专题](docs/SIMPLENAV_V5.md)。
+
+| 目录 | 职责 |
+|---|---|
+| `benchmark/launch/` | 配置、预检、服务管理、多序列启动、来源记录 |
+| `benchmark/data/`、`contracts/` | 发布归档、manifest、冻结语言、实际状态修补及几何计算 |
+| `benchmark/artifacts/` | 输出版本、目录索引、兼容路径与证据引用 |
+| `benchmark/validation/` | 冻结数据校验 |
+| `benchmark/agents/`、`examples/` | 协议、Agent 进程及模型适配 |
+| `benchmark/scenes/`、`viewer/` | 数据读取、Isaac 环境、取证和显示 |
+| `benchmark/runtime/` | 请求执行、连续历史、事件与录像 |
+| `benchmark/evaluation/` | 完整 GT 判定、汇总与诊断计算 |
+| `benchmark/reporting/` | HTML／CSV／JSON、修补审计与报告索引 |
+| `benchmark/legacy/` | 旧 v4 修补和历史契约 |
+| `scripts/` | 安装、HoloAgent 启动及不能由普通运行代替的专项检查 |
+| `tests/` | CPU 回归，覆盖协议、评分、修补、历史、录像和启动管理 |
+
+完整目录及每个文件的内容/作用见 [项目文件清单](docs/FILE_MAP.md)。新增或移动文件后执行：
+
+```bash
+python -m benchmark inventory          # 生成清单
+python -m benchmark inventory --check  # 检查遗漏/过期，不修改文件
+```
+
+常用流程统一使用 `python -m benchmark`。原验证、预检和单报告包装脚本已移除，分别使用
+`validate`、`preflight / experiment` 和 `analyze`。`generation/` 已移除，生成职责由外部 Builder 承担。
+文件用途集中维护于清单生成器，无需重复维护目录说明。
+
+内部辅助模块已按职责合并：语言／日历／名称位于 `contracts/language.py`，
+对象与历史指代位于 `contracts/references.py`，路线与连通性位于 `contracts/navigation.py`，
+计分分母和新旧汇总统一位于 `evaluation/report.py`。历史导入路径由包入口集中映射到同一实现，
+完整映射见 [文件清单](docs/FILE_MAP.md#保留的导入路径)。模型接口、数据与评分版本、命令和检查流程继续保留。
+
+`scripts/` 仅保留以下 6 个有独立用途的入口：
+
+| 脚本 | 保留用途 | 执行环境 |
+|---|---|---|
+| `bootstrap.sh` | 创建最小主机环境 | CPU |
+| `check_simplenav_cpu.py` | `benchmark check` 使用的模型/仿真导入隔离检查器 | CPU |
+| `check_runtime_tasks.py` | 对外部旧 schema 4 归档进行三种失败情形重放并输出审计 | CPU |
+| `check_request_evidence.py` | 检查真实渲染的新帧、可见像素和世界状态 | Isaac / GPU |
+| `run_request_diagnostics.py` | 使用完整发布序列注入拿起后失败、原地释放、初始已满足的受控实验 | prepare-only 为 CPU；实跑为 GPU |
+| `run_holoagent.sh` | HoloAgent / VLM 服务与仿真联合启动 | 模型 / Isaac / GPU |
+
+历史实验及整理验证的说明随对应 `results/` 保存，`docs/` 只保留当前使用和契约文档。
+
+模型适配保留 `benchmark/agents/` 实现、`examples/` 协议入口、`configs/<model>/` 参数配置的结构。
+当前仅发布 `configs/simplenav/` 下的配置模板；以后新增模型配置也统一放在 `configs/<model>/`，本机配置使用 `*.local.json`。
+SimpleNav 的适配器和 managed／external 服务启动均保留；新增模型按 [Agent 接入](docs/AGENT_INTEGRATION.md) 扩展，
+数据契约、任务修补和评分由 Benchmark 统一维护。
+
+[架构说明](PROJECT_GUIDE.md) · [Agent 接入](docs/AGENT_INTEGRATION.md) · [协议](docs/PROTOCOL.md) ·
+[运行与评分规则](docs/RULES.md) · [发布数据契约](docs/DATA_FORMAT.md)
+
+`results/`、本机 `.local.json` 配置、虚拟环境、缓存、权重和大型资产不纳入源码。
+来源哈希可核对版本，不能保证不同驱动、物理引擎或随机模型的结果逐位相同。
