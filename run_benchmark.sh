@@ -2,6 +2,18 @@
 set -euo pipefail
 
 BENCHMARK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -n "${DATASET_DIR:-}" ]]; then
+  set -- --dataset "${DATASET_DIR}" "$@"
+fi
+HAS_DATASET=0
+for arg in "$@"; do
+  case "${arg}" in --dataset|--dataset=*|-h|--help) HAS_DATASET=1 ;; esac
+done
+if [[ "${HAS_DATASET}" == 0 ]]; then
+  echo "Provide --dataset PATH or DATASET_DIR; datasets are supplied externally." >&2
+  exit 2
+fi
 if [[ -z "${ISAACSIM_ROOT:-}" ]]; then
   for candidate in "${BENCHMARK_ROOT}/../.." "${BENCHMARK_ROOT}/.."; do
     if [[ -x "${candidate}/python.sh" ]]; then
@@ -17,12 +29,12 @@ PYTHON_BIN="${ISAACSIM_PYTHON:-${ISAACSIM_ROOT}/python.sh}"
 # users install Isaac Sim merely to validate a clone or inspect its sessions.
 DRY_RUN=0
 for arg in "$@"; do
-  if [[ "$arg" == "--dry-run" ]]; then
+  if [[ "$arg" == "--dry-run" || "$arg" == "--help" || "$arg" == "-h" ]]; then
     DRY_RUN=1
     break
   fi
 done
-if [[ "${DRY_RUN}" == 1 && -z "${ISAACSIM_PYTHON:-}" && -z "${ISAACSIM_ROOT:-}" ]]; then
+if [[ "${DRY_RUN}" == 1 && -z "${ISAACSIM_PYTHON:-}" ]]; then
   if [[ -n "${BENCHMARK_PYTHON:-}" ]]; then
     PYTHON_BIN="${BENCHMARK_PYTHON}"
   elif [[ -x "${BENCHMARK_ROOT}/.venv/bin/python" ]]; then
@@ -63,7 +75,6 @@ done
 cd "${BENCHMARK_ROOT}"
 export PYTHONPATH="${ISAACSIM_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 exec "${PYTHON_BIN}" -m benchmark.run \
-  --dataset "${DATASET_DIR:-${BENCHMARK_ROOT}/dataset/scene000430_after_changes}" \
   --agent-cmd "${AGENT_CMD:-python3 ${BENCHMARK_ROOT}/examples/random_agent.py}" \
   --output "${OUTPUT_DIR:-${BENCHMARK_ROOT}/results}" \
   "${@}"

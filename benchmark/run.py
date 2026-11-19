@@ -8,9 +8,9 @@ import json
 import logging
 import math
 import re
-import subprocess
 import sys
 from pathlib import Path
+from .artifacts.layout import sha256_file as _digest
 import traceback
 
 from .agents.agent_api import AgentProcess
@@ -19,10 +19,13 @@ from .scenes.dataset_loader import BenchmarkDataset
 from .scenes.state_composer import compose_session_state
 from .evaluation.report import write_summary
 from .runtime.session_runner import SessionRunner
+from .runtime.observations import OBSERVATION_POLICY
+from .evaluation.task_metrics import METRIC_POLICY
 from .scenes.holoagent_sensor_bridge import HoloAgentSensorTopics
+from .artifacts.layout import initialize_run, update_status, write_json
+from .viewer.viewport import _bind_viewport_camera, _place_viewport_window, _sync_viewer
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATASET = ROOT / "dataset" / "scene000430_after_changes"
 DEFAULT_HOLOAGENT_SENSOR_TOPICS = HoloAgentSensorTopics()
 
 
@@ -51,14 +54,6 @@ def _create_run_directory(base: Path, command: str) -> tuple[Path, str]:
     return candidate, timestamp
 
 
-def _digest(path: Path) -> str:
-    value = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            value.update(block)
-    return value.hexdigest()
-
-
 def _dataset_digest(root: Path) -> str:
     """Hash dataset paths and contents so task/GT edits change the run identity."""
     value = hashlib.sha256()
@@ -70,103 +65,9 @@ def _dataset_digest(root: Path) -> str:
     return value.hexdigest()
 
 
-def _bind_viewport_camera(viewport, camera_path: str) -> None:
-    """Bind a Kit viewport to a USD camera using the Isaac Sim 6 API."""
-    if viewport is None:
-        return
-    # ``camera_path`` is the public API in Isaac Sim 6.  Older Kit builds
-    # exposed ``set_active_camera`` on the same object, so retain that small
-    # fallback for local installations.
-    try:
-        # ViewportManager updates both the viewport API and its render product.
-        # This is important when the viewport was created after the camera
-        # annotator: assigning ``camera_path`` alone can leave a stale product.
-        from isaacsim.core.rendering_manager import ViewportManager
-        ViewportManager.set_camera(camera_path, render_product_or_viewport=viewport)
-        # Some Kit 6.x builds keep a separate render-product relationship.  Set
-        # it explicitly as well, otherwise the visible viewport may continue to
-        # render the camera that was selected when the product was created.
-        try:
-            from pxr import Sdf, Usd
-            product = ViewportManager.get_render_product(viewport)
-            if product is not None:
-                stage = __import__("omni.usd", fromlist=["get_context"]).get_context().get_stage()
-                with Usd.EditContext(stage, stage.GetSessionLayer()):
-                    product.GetCameraRel().SetTargets([Sdf.Path(camera_path)])
-        except Exception:
-            pass
-    except Exception:
-        try:
-            viewport.camera_path = camera_path
-        except Exception:
-            setter = getattr(viewport, "set_active_camera", None)
-            if setter is None:
-                raise
-            setter(camera_path)
-    try:
-        viewport.updates_enabled = True
-    except Exception:
-        pass
-    # ViewportWindow invokes this after a scene/frame rebuild.  Calling it
-    # explicitly is required by some Kit versions when a camera prim is moved
-    # programmatically rather than by the viewport manipulator.
-    try:
-        import omni.usd
-        from pxr import Sdf
-        changed = getattr(viewport, "viewport_changed", None)
-        stage = getattr(viewport, "stage", None) or omni.usd.get_context().get_stage()
-        if changed is not None and stage is not None:
-            changed(Sdf.Path(camera_path), stage)
-    except Exception:
-        pass
-
-
-def _place_viewport_window(window) -> None:
-    """Place the overview window in the top-right without assuming 1920px UI."""
-    if window is None:
-        return
-    try:
-        import omni.ui as ui
-        width = int(ui.Workspace.get_main_window_width())
-        window.position_x = max(0, width - 440)
-        window.position_y = 42
-    except Exception:
-        # A fixed fallback is still preferable to leaving the window off-screen.
-        try:
-            window.position_x = 840
-            window.position_y = 42
-        except Exception:
-            pass
-    window.visible = True
-    try:
-        window.viewport_api.updates_enabled = True
-    except Exception:
-        pass
-
-
-def _sync_viewer(viewport, overview_window, front_camera: str, overview_camera: str | None,
-                 app) -> None:
-    """Rebind and advance viewer products after an environment action.
-
-    Isaac Sim can recreate a viewport render product when a stage is opened or
-    a window is moved.  Reasserting both camera relationships after each step
-    keeps the displayed cameras tied to the same USD prims used by the agent.
-    """
-    try:
-        _bind_viewport_camera(viewport, front_camera)
-        if overview_camera and overview_window is not None:
-            overview_viewport = getattr(overview_window, "viewport_api", overview_window)
-            _bind_viewport_camera(overview_viewport, overview_camera)
-            _place_viewport_window(overview_window)
-        app.update()
-    except Exception as exc:
-        # Rendering must not abort an otherwise valid benchmark run.
-        print(f"[viewer] warning: viewport sync failed: {exc}")
-
-
 def _make_env_factory(
     dataset: BenchmarkDataset, app, viewer: bool = False, overview_holder: dict | None = None,
-    camera_config=None, holoagent_sensor_topics=None,
+    camera_config=None, holoagent_sensor_topics=None, video_options=None,
 ):
     import numpy as np
     from .scenes.isaac_env import EnvConfig, IsaacVLNEnv
@@ -181,13 +82,19 @@ def _make_env_factory(
         )
         env.configure_scene(dataset.scene_metadata(scene_id), navigation,
                             dataset.manipulation(scene_id), initial_state)
-        if viewer:
+        if viewer or (video_options and video_options['layout'] == 'front_overview'):
             overview_path = env.setup_overview()
         else:
             overview_path = None
+        if video_options:
+            env.setup_review_capture(video_options['layout'])
         first = next((item for item in dataset.sessions(scene_id) if item.session_id == session_id), None)
         instruction = first.metadata.get("instruction") if first else None
         start_pose = first.metadata.get("start_pose") if first else None
+        if initial_state.get('robot_base_pose'):
+            from copy import deepcopy
+            start_pose = deepcopy(initial_state['robot_base_pose'])
+            start_pose['position'][2] += env.config.camera_height
         if start_pose is None and isinstance(instruction, dict):
             start_pose = instruction.get("start_pose")
         if start_pose:
@@ -213,7 +120,9 @@ def _make_env_factory(
                 overview_holder["front_viewport"] = viewport
                 overview_holder["overview_camera_path"] = overview_path
             _bind_viewport_camera(viewport, env.config.camera_prim_path)
-            if overview_path:
+            # Recording already owns an overview render product. Keep one GUI
+            # viewport to avoid duplicate overview products during warm-up.
+            if overview_path and not video_options:
                 try:
                     try:
                         from isaacsim.core.rendering_manager import ViewportManager
@@ -240,20 +149,28 @@ def _make_env_factory(
                     )
                 except Exception as exc:
                     print(f"[viewer] warning: overview viewport unavailable: {exc}")
+        ready = False
+        capture_error = None
         for _ in range(120):
             app.update()
-            if env.try_observe() is not None:
+            ready = env.try_observe() is not None
+            if ready and video_options:
+                try:
+                    env.capture_review_frames(video_options['layout'])
+                except RuntimeError as exc:
+                    ready, capture_error = False, exc
+            if ready:
                 break
             # Some Kit versions do not advance a newly-created render product
             # from app.update() alone.  Force Replicator only during warm-up;
             # doing this on every action breaks viewer backbuffers.
             env.render_once()
-        if env.try_observe() is None:
+        if not ready:
             env.close()
             raise RuntimeError(
-                "Isaac Sim camera produced no RGB frame after initialization; "
+                "Isaac Sim requested cameras produced no RGB frame after initialization; "
                 "check viewer/GPU rendering and camera annotator setup"
-            )
+            ) from capture_error
         if viewer:
             _bind_viewport_camera(viewport, env.config.camera_prim_path)
         if viewer and overview_holder.get("window") is not None:
@@ -275,12 +192,18 @@ def _inspect(dataset: BenchmarkDataset, scene_ids: list[str]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(argv) if argv is not None else sys.argv[1:]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument("--dataset", type=Path, required=True)
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--sequence', action='append', help='sequence_id in a scene collection; repeat for independent runs')
+    selection.add_argument('--all-sequences', action='store_true', help='run every indexed sequence in fresh processes')
     parser.add_argument("--agent-cmd", default=f"python3 {ROOT / 'examples' / 'random_agent.py'}",
                         help="command implementing the JSONL agent protocol")
     parser.add_argument("--output", type=Path, default=ROOT / "results",
                         help="base directory; each run is written to a timestamped child")
+    parser.add_argument('--run-directory', type=Path,
+                        help='exact NEW run directory (used by the experiment manager)')
     parser.add_argument("--scene", action="append", help="scene id; repeat to select multiple scenes")
     parser.add_argument("--session", action="append",
                         help="diagnostic session id; repeat to select multiple sessions")
@@ -294,6 +217,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="seconds to wait for each agent response")
     parser.add_argument("--qa-judge-model", help="optional local model for open-ended QA judging")
     parser.add_argument("--viewer", action="store_true", help="show Isaac Sim and the task overlay")
+    parser.add_argument('--gpu', type=int, help='Isaac/Vulkan device index; disables multi-GPU rendering')
+    parser.add_argument('--record-video', action='store_true', help='v5 private per-session CPU MP4 recording')
+    parser.add_argument('--video-layout', choices=('front','front_overview'), default='front_overview')
+    parser.add_argument('--video-fps', type=int, default=10)
+    parser.add_argument('--video-event-seconds', type=float, default=.5,
+                        help='playback hold per event; wall time is preserved separately in the index')
+    parser.add_argument('--ffmpeg', default='ffmpeg', help='CPU ffmpeg executable')
     parser.add_argument("--step-delay", type=float, default=0.0, help="viewer delay after each action")
     parser.add_argument("--session-start-pose-mode", choices=("inherit", "explicit"), default="inherit",
                         help="agent pose at session boundaries (default: inherit previous final pose)")
@@ -313,7 +243,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.agent_timeout <= 0:
         parser.error("--agent-timeout must be positive")
+    if args.max_steps < 1:
+        parser.error('--max-steps must be positive')
+    if args.gpu is not None and args.gpu < 0:
+        parser.error('--gpu must be non-negative')
+    video_options = None
+    if args.record_video:
+        from .runtime.recording import validate_video_options
+        try:
+            video_options = validate_video_options({'layout':args.video_layout,'fps':args.video_fps,
+                'event_seconds':args.video_event_seconds,'ffmpeg':args.ffmpeg})
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.official:
+        if args.record_video:
+            parser.error('--record-video is a diagnostic profile; omit --official for review runs')
         if args.scene or args.session or args.task or args.task_type:
             parser.error("--official requires the complete dataset without selection filters")
         if args.viewer or args.step_delay:
@@ -325,11 +269,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.holoagent_sensors:
             parser.error("--official does not enable adapter-specific ROS sensors")
 
-    dataset = BenchmarkDataset(args.dataset)
+    if args.all_sequences or (args.sequence and len(args.sequence) > 1):
+        if args.run_directory:
+            parser.error('--run-directory applies to one run; use --output for a sequence collection')
+        if args.session or args.task or args.task_type:
+            parser.error('sequence collection runs require complete session/task dependency sequences')
+        from .runtime.sequence_runs import selected_paths, run_collection
+        paths = selected_paths(args.dataset, None if args.all_sequences else args.sequence)
+        return run_collection(paths, args.output, raw_argv, dry_run=args.dry_run)
+    dataset = BenchmarkDataset(args.dataset, sequence_id=args.sequence[0] if args.sequence else None)
+    if video_options and dataset.manifest.get('schema_version') != 5:
+        parser.error('--record-video is currently supported only for v5 complete requests')
+    if dataset.manifest.get('schema_version') == 5 and (args.session or args.task or args.task_type):
+        parser.error('v5 requires the complete session/task dependency sequence')
     if args.official:
-        subprocess.run([
-            sys.executable, str(ROOT / "scripts" / "validate_dataset.py"), str(dataset.root)
-        ], check=True)
+        from .validation.dataset import main as validate_main
+        validation_code = validate_main([str(dataset.root)])
+        if validation_code:
+            return validation_code
     scenes = args.scene or dataset.scene_ids()
     unknown = sorted(set(scenes) - set(dataset.scene_ids()))
     if unknown:
@@ -338,18 +295,49 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return 0
 
-    output_root, run_timestamp = _create_run_directory(args.output, args.agent_cmd)
-    from isaacsim import SimulationApp
-    app = SimulationApp({"headless": not args.viewer})
+    if args.run_directory:
+        output_root = args.run_directory.resolve()
+        output_root.mkdir(parents=True, exist_ok=False)
+        run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    else:
+        output_root, run_timestamp = _create_run_directory(args.output, args.agent_cmd)
+    structured = dataset.manifest.get('schema_version') == 5
+    if structured:
+        initialize_run(output_root, dataset)
+        write_json(output_root/'launch_config.json', {'schema_version': 1, 'argv': raw_argv,
+            'dataset_root': str(dataset.root), 'sequence_identity': dataset.sequence_identity(),
+            'python': sys.executable, 'agent_command': args.agent_cmd})
+        from .launch.provenance import capture_provenance
+        capture_provenance(output_root/'provenance.json', dataset_root=dataset.root)
+    simulation_options = {"headless": not args.viewer}
+    if args.gpu is not None:
+        simulation_options.update(active_gpu=args.gpu, physics_gpu=args.gpu, multi_gpu=False)
+    try:
+        from isaacsim import SimulationApp
+        app = SimulationApp(simulation_options)
+    except BaseException as exc:
+        if structured:
+            update_status(output_root, phase='failed', execution='startup_failed',
+                          error=str(exc), cleanup='simulator_startup_failed')
+        raise
+    # Kit can install a fast-exit SIGINT handler even with its documented
+    # installSignalHandlers setting disabled. Route cancellation through the
+    # runner's finally blocks so videos and interrupted outcomes are durable.
+    import signal
+    def interrupt_run(signum, frame):
+        raise KeyboardInterrupt(f'benchmark interrupted by signal {signum}')
+    signal.signal(signal.SIGINT, interrupt_run)
+    signal.signal(signal.SIGTERM, interrupt_run)
     overlay = None
     summary_written = False
+    run_exit_code = 1
     overview_holder = {}
     try:
         logger = logging.getLogger("longterm_benchmark")
         logger.setLevel(logging.INFO)
         logger.handlers.clear()
         logger.propagate = False
-        handler = logging.FileHandler(output_root / "run.log", encoding="utf-8")
+        handler = logging.FileHandler(output_root / ("logs/run.log" if structured else "run.log"), encoding="utf-8")
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(handler)
         console = logging.StreamHandler(sys.stdout)
@@ -388,8 +376,11 @@ def main(argv: list[str] | None = None) -> int:
             "agent_timeout_seconds": args.agent_timeout,
             "session_start_pose_mode": args.session_start_pose_mode,
             "camera_resolution": list(camera_config.resolution),
+            "observation_policy": OBSERVATION_POLICY,
+            "metric_policy": METRIC_POLICY if (dataset.manifest.get('runtime_contract') or {}).get('version') == 3 else {'version':'binary_success_v1'},
             "horizontal_fov_degrees": camera_config.horizontal_fov_degrees,
             "protocol_version": PROTOCOL_VERSION,
+            "sequence_identity": dataset.sequence_identity(),
         }
         official_profile_sha256 = hashlib.sha256(json.dumps(
             official_profile, sort_keys=True, separators=(",", ":")
@@ -399,6 +390,9 @@ def main(argv: list[str] | None = None) -> int:
             "protocol_version": PROTOCOL_VERSION,
             "dataset_id": dataset.manifest.get("dataset_id"),
             "dataset_root": str(dataset.root),
+            "runtime_scene_cache": str(dataset._requests.path('runtime_scene_cache')) if dataset._requests else None,
+            "runtime_contract": dataset.manifest.get('runtime_contract'),
+            "sequence_identity": dataset.sequence_identity(),
             "dataset_manifest_sha256": _digest(dataset.root / "dataset_manifest.json"),
             "dataset_tree_sha256": official_profile["dataset_tree_sha256"],
             "scene_ids": scenes,
@@ -408,8 +402,11 @@ def main(argv: list[str] | None = None) -> int:
             "step_delay_seconds": args.step_delay,
             "session_start_pose_mode": args.session_start_pose_mode,
             "viewer": args.viewer,
+            "simulation_options": simulation_options,
+            "recording": video_options,
             "overview_viewer": "Isaac Sim 3D top-down viewport" if args.viewer else None,
             "observation_views": ["front"],
+            "observation_policy": OBSERVATION_POLICY,
             "holoagent_sensors": (None if holoagent_sensor_topics is None
                                    else holoagent_sensor_topics.as_dict()),
             "run_timestamp": run_timestamp,
@@ -417,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
             "agent_name": _agent_name(args.agent_cmd),
             "official": bool(args.official),
             "evaluation_profile": official_profile,
+            "metric_policy": official_profile['metric_policy'],
             "evaluation_profile_sha256": official_profile_sha256,
             "camera": {"resolution": list(camera_config.resolution),
                         "horizontal_fov_degrees": camera_config.horizontal_fov_degrees,
@@ -435,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
         }
         (output_root / "run_config.json").write_text(
             json.dumps(run_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if structured:
+            update_status(output_root, phase='running', execution='running')
         if args.viewer:
             from .viewer.viewer_overlay import ViewerOverlay
             overlay = ViewerOverlay()
@@ -473,11 +473,12 @@ def main(argv: list[str] | None = None) -> int:
                 task_ids=set(args.task) if args.task else None,
                 task_types=set(args.task_type) if args.task_type else None,
                 log_callback=lambda message: logger.info(message),
+                video_options=video_options,
             )
             factory = _make_env_factory(dataset, app, viewer=args.viewer,
                                         overview_holder=overview_holder,
                                         camera_config=camera_config,
-                                        holoagent_sensor_topics=holoagent_sensor_topics)
+                                        holoagent_sensor_topics=holoagent_sensor_topics, video_options=video_options)
             for scene_id in scenes:
                 all_sessions = dataset.sessions(scene_id)
                 selected = ([item for item in all_sessions if item.session_id in set(args.session)]
@@ -490,10 +491,17 @@ def main(argv: list[str] | None = None) -> int:
                     for prior in all_sessions[:first_index]:
                         initial_state = compose_session_state(initial_state, prior.mutation())
                 runner.run_scene(scene_id, selected, initial_state, factory)
-            write_summary(dataset, output_root)
+            summary = write_summary(dataset, output_root)
             summary_written = True
+            if summary.get('evaluation_valid') is False:
+                raise RuntimeError('completed run has invalid evaluation evidence; see summary.json')
+            if structured:
+                update_status(output_root, phase='finalizing', execution='completed', summary='completed')
         logger.info("benchmark_complete output=%s", output_root)
-    except BaseException:
+        run_exit_code = 0
+    except BaseException as exc:
+        if structured:
+            update_status(output_root, phase='failed', execution='failed', error=str(exc))
         if 'logger' in locals():
             logger.exception("benchmark_failed")
         traceback.print_exc()
@@ -502,7 +510,11 @@ def main(argv: list[str] | None = None) -> int:
         if not summary_written and 'output_root' in locals():
             try:
                 write_summary(dataset, output_root)
-            except Exception:
+                if structured:
+                    update_status(output_root, summary='completed_after_failure')
+            except Exception as exc:
+                if structured:
+                    update_status(output_root, summary='failed', summary_error=str(exc))
                 if 'logger' in locals():
                     logger.exception("summary_write_failed")
         if overlay is not None:
@@ -513,7 +525,18 @@ def main(argv: list[str] | None = None) -> int:
                 overview.destroy()
             except Exception:
                 pass
-        app.close()
+        # Kit fast shutdown terminates the interpreter; preserve failures in
+        # the process exit code as well as metrics.json.
+        import inspect
+        if structured:
+            # Some Kit builds terminate the interpreter in app.close(). The
+            # parent supervisor confirms process exit separately.
+            update_status(output_root, phase='completed' if run_exit_code == 0 else 'failed',
+                          cleanup='simulator_close_requested', exit_code=run_exit_code)
+        if 'exit_code' in inspect.signature(app.close).parameters:
+            app.close(exit_code=run_exit_code)
+        else:
+            app.close()
     return 0
 
 

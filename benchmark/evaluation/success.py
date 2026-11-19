@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 from typing import Any
 
 from .metrics.qa import score_qa
@@ -60,7 +61,10 @@ def evaluate_embodied_task(
         target_geometry = ground_truth.get("expected_outcome", {}).get("target_geometry")
         target_ids = ground_truth.get("target", {}).get("object_ids", [])
         runtime_target = _runtime_geometry(target_ids[0] if target_ids else None, state)
-        if runtime_target is not None:
+        fixed = ground_truth.get('fixed_target_geometry', {}).get('world_aabb')
+        if fixed:
+            target_geometry = {'world_aabb_xy': {k: fixed[k][:2] for k in ('min', 'max')}}
+        elif runtime_target is not None:
             target_geometry = runtime_target
         distance_type = str(criteria.get("target_distance_type", "point"))
         if distance_type == "aabb_2d" and isinstance(target_geometry, dict):
@@ -125,6 +129,15 @@ def evaluate_embodied_task(
                     passed = passed and bool(actual.get("door_open")) == (expected_state == "open")
                 else:
                     passed = passed and actual.get("state") == expected_state
+            if criteria.get('require_released'):
+                passed = passed and not actual.get('held') and state.get('held_object') != change.get('object_id')
+            if criteria.get('require_place_event'):
+                passed = passed and any(
+                    (e.get('action') if isinstance(e.get('action'), str) else e.get('action', {}).get('action')) == 'place'
+                    and e.get('result', {}).get('success')
+                    and e.get('result', {}).get('object_id') == change.get('object_id') for e in events)
+            if criteria.get('placement_surface'):
+                passed = passed and actual.get('placement_surface') == criteria['placement_surface']
             checks.append({"object_id": change.get("object_id"), "success": passed})
         return {"success": bool(checks) and all(item["success"] for item in checks),
                 "checks": checks, "steps": len(events)}
@@ -136,3 +149,61 @@ def evaluate_qa(prediction: Any, ground_truth: dict[str, Any]) -> dict[str, Any]
     metrics = score_qa(prediction, outcome.get("answer", ""), outcome.get("accepted_answers", []))
     metrics["success"] = bool(metrics["semantic_match"])
     return metrics
+
+
+def already_satisfied(task: dict[str, Any], ground_truth: dict[str, Any],
+                      state: dict[str, Any], pose: dict[str, Any]) -> dict[str, Any] | None:
+    """Prove a state goal holds before dispatch; never invent an action/answer.
+
+    Naming a place, answering QA and visiting an ordered route require an
+    experience even when the robot is already near the target. Unknown state
+    is not evidence of completion. This check never changes normal scoring.
+    """
+    kind = task.get('task_type')
+    criteria = ground_truth.get('success_criteria', {})
+    if kind == 'navigation':
+        if (criteria.get('required_site_order') or
+                (ground_truth.get('named_place') and 'fixed_target_geometry' not in ground_truth)):
+            return None
+        target_ids = ground_truth.get('target', {}).get('object_ids', [])
+        if target_ids and not ground_truth.get('fixed_target_geometry'):
+            if any(_runtime_geometry(oid, state) is None for oid in target_ids):
+                return None
+        measured = evaluate_embodied_task(task, ground_truth, [{'after': pose}], state)
+        if measured['success']:
+            return {'reason': 'navigation_goal_already_reached',
+                    'agent_pose': deepcopy(pose), 'distance_m': measured['final_distance_m'],
+                    'tolerance_m': measured['tolerance_m']}
+    elif kind == 'manipulation':
+        changes = ground_truth.get('expected_outcome', {}).get('state_changes', [])
+        if not changes:
+            return None
+        for change in changes:
+            oid = change.get('object_id')
+            obj = state.get('objects', {}).get(oid)
+            relation = change.get('relation_after') or {}
+            relation_type = relation.get('type') or relation.get('relation_type')
+            if not obj or obj.get('held') or state.get('held_object') == oid:
+                return None
+            if relation_type == 'in_room':
+                if not relation.get('room_id') or obj.get('room_id') != relation['room_id']:
+                    return None
+            elif relation_type in {'on', 'supported_by'}:
+                if not relation.get('object_id') or obj.get('support_object_id') != relation['object_id']:
+                    return None
+            elif relation or change.get('state_after') is None:
+                return None
+            if change.get('state_after') in {'open', 'closed'} and 'door_open' not in obj:
+                return None
+            # An authored transfer asks for a floor placement, not merely being
+            # somewhere in the room (e.g. still on a table).
+            surface = criteria.get('placement_surface')
+            if surface == 'floor' and obj.get('support_object_id') is not None:
+                return None
+        check_gt = deepcopy(ground_truth)
+        check_gt.setdefault('success_criteria', {}).pop('require_place_event', None)
+        measured = evaluate_embodied_task(task, check_gt, [], state)
+        if measured['success']:
+            return {'reason': 'manipulation_goal_already_satisfied',
+                    'objects': {c['object_id']: deepcopy(state['objects'][c['object_id']]) for c in changes}}
+    return None

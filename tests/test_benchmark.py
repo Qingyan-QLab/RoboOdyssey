@@ -21,37 +21,88 @@ from examples.holoagent_benchmark_server import (
 )
 from examples.holoagent_agent import normalize_response
 
-DATASET = Path(__file__).resolve().parents[1] / "dataset" / "scene000430_after_changes"
+def legacy_dataset(root):
+    """Small CPU-only legacy fixture; no bundled assets or external Builder."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    def write(path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+    write(root/'dataset_manifest.json', {'schema_version': 1, 'dataset_id': 'synthetic_legacy',
+        'scenes': [{'scene_id': 'scene', 'sessions_dir': 'sessions', 'scene_metainfo': 'metadata.json'}]})
+    write(root/'metadata.json', {'objects': [{'object_id': 'cup', 'geometry': {
+        'world_matrix4x4': [[1,0,0,0], [0,1,0,0], [0,0,1,0], [1,2,0,1]]}}]})
+    for i in (1, 0):  # Deliberately create out of order; loading must sort sessions.
+        sid = f'session_{i:03d}'
+        tasks = [{'task_id': kind, 'task_type': kind} for kind in ('navigation', 'manipulation', 'qa')]
+        write(root/'sessions'/sid/'session.json', {
+            'session_id': sid, 'dataset_schema': 'scene_package_v2',
+            'parent_session_id': 'session_000' if i else None, 'tasks': tasks,
+            'instruction': {'rooms': [{'room_id': 'room', 'text': 'This is the room.', 'render_region': {'type': 'room'}}]}})
+        write(root/'sessions'/sid/'ground_truth.json', {'tasks': tasks})
+    return BenchmarkDataset(root)
 
 
 class DatasetTests(unittest.TestCase):
-    def test_example_dataset_shape_and_chain(self):
-        dataset = BenchmarkDataset(DATASET)
-        self.assertEqual(dataset.scene_ids(), ["scene000430"])
-        sessions = dataset.sessions("scene000430")
-        self.assertEqual(len(sessions), 10)
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.dataset = legacy_dataset(Path(temp.name))
+
+    def test_dataset_shape_and_chain(self):
+        self.assertEqual(self.dataset.scene_ids(), ['scene'])
+        sessions = self.dataset.sessions('scene')
+        self.assertEqual([s.session_id for s in sessions], ['session_000', 'session_001'])
         parent = None
         for session in sessions:
-            self.assertEqual(session.metadata["dataset_schema"], "scene_package_v2")
-            self.assertEqual(session.metadata["parent_session_id"], parent)
-            self.assertEqual(
-                {task["task_id"] for task in session.tasks},
-                {task["task_id"] for task in session.ground_truth()["tasks"]},
-            )
+            self.assertEqual(session.metadata['dataset_schema'], 'scene_package_v2')
+            self.assertEqual(session.metadata['parent_session_id'], parent)
+            self.assertEqual({t['task_id'] for t in session.tasks},
+                             {t['task_id'] for t in session.ground_truth()['tasks']})
             parent = session.session_id
 
-    def test_room_instruction_is_compact(self):
-        session = BenchmarkDataset(DATASET).sessions("scene000430")[0]
-        rooms = session.metadata["instruction"]["rooms"]
-        self.assertTrue(rooms)
-        self.assertTrue(all(room["render_region"] == {"type": "room"} for room in rooms))
-        self.assertTrue(all("camera_trajectory" not in room for room in rooms))
+    def test_room_instruction_rejects_frozen_camera_views(self):
+        session = self.dataset.sessions('scene')[0]
+        metadata = session.metadata
+        metadata['instruction']['camera_trajectory'] = []
+        (session.path/'session.json').write_text(json.dumps(metadata))
+        with self.assertRaisesRegex(ValueError, 'must not contain frozen camera views'):
+            self.dataset.sessions('scene')
 
     def test_canonical_state_comes_from_metadata(self):
-        state = BenchmarkDataset(DATASET).canonical_state("scene000430")
-        self.assertEqual(state["scene_id"], "scene000430")
-        self.assertGreater(len(state["objects"]), 300)
-        self.assertTrue(all("pose" in item for item in state["objects"].values()))
+        state = self.dataset.canonical_state('scene')
+        self.assertEqual(state['scene_id'], 'scene')
+        self.assertEqual(state['objects']['cup']['pose']['position'], [1, 2, 0])
+        self.assertEqual(state['objects']['cup']['pose']['orientation'], [0, 0, 0, 1])
+
+    def test_cli_dry_run_uses_explicit_temporary_dataset(self):
+        from benchmark.cli import main
+        from contextlib import redirect_stdout
+        from io import StringIO
+        with redirect_stdout(StringIO()) as output:
+            self.assertEqual(main(['run', '--dataset', str(self.dataset.root), '--dry-run']), 0)
+        self.assertIn('scene: 2 sessions', output.getvalue())
+
+    def test_official_dry_run_uses_shared_validator_and_stops_on_errors(self):
+        from benchmark.cli import main
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from unittest.mock import patch
+        with patch('benchmark.validation.dataset.validate', return_value=['invalid fixture']) as validate, \
+             redirect_stdout(StringIO()):
+            self.assertEqual(main(['run', '--dataset', str(self.dataset.root), '--official', '--dry-run']), 1)
+        validate.assert_called_once_with(self.dataset.root)
+
+    def test_cli_requires_dataset_before_loading_or_running(self):
+        from benchmark.cli import main
+        from contextlib import redirect_stderr
+        from io import StringIO
+        for args in (['run', '--dry-run'], ['doctor']):
+            with self.subTest(command=args[0]), redirect_stderr(StringIO()) as error:
+                with self.assertRaises(SystemExit) as raised:
+                    main(args)
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn('--dataset', error.getvalue())
 
     def test_mutation_does_not_modify_input(self):
         state = {"objects": {"cup": {"room_id": "a", "pose": {"position": [0, 0, 0]}}}}
@@ -350,7 +401,7 @@ class RunnerTests(unittest.TestCase):
             runner.run_scene("scene", [record], state,
                              lambda _scene, initial, _session: FakeEnvironment(initial))
             self.assertEqual([request["type"] for request in agent.requests],
-                             ["session_start", "step", "qa", "step"])
+                             ["session_start", "qa", "step"])
             for request in agent.requests:
                 assert_public_agent_request(request)
             session_output = output / "scenes" / "scene" / "sessions" / "session_000"
@@ -361,16 +412,21 @@ class RunnerTests(unittest.TestCase):
             )
             metrics = json.loads((session_output / "metrics.json").read_text())
             self.assertTrue(metrics["success"])
+            self.assertEqual(metrics['tasks_evaluated'], 2)
+            self.assertEqual(metrics['tasks_excluded'], 1)
+            self.assertEqual(metrics['task_results'][0]['termination_reason'], 'already_satisfied')
+            self.assertIsNone(metrics['task_results'][0]['success'])
             self.assertEqual([item["task_id"] for item in metrics["task_results"]], ["n", "q", "m"])
 
     def test_summary_counts_missing_tasks_as_failures(self):
         with tempfile.TemporaryDirectory() as directory:
-            summary = write_summary(BenchmarkDataset(DATASET), directory)
-            authored = sum(len(session.tasks)
-                           for session in BenchmarkDataset(DATASET).sessions("scene000430"))
+            dataset = legacy_dataset(Path(directory)/'data')
+            (Path(directory)/'result').mkdir()
+            summary = write_summary(dataset, Path(directory)/'result')
+            authored = sum(len(session.tasks) for session in dataset.sessions('scene'))
             self.assertEqual(summary["tasks_evaluated"], authored)
             self.assertEqual(summary["task_success_rate"], 0.0)
-            self.assertEqual(summary["sessions_evaluated"], 10)
+            self.assertEqual(summary["sessions_evaluated"], 2)
 
 
 if __name__ == "__main__":

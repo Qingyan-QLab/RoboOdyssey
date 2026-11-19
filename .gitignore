@@ -1,13 +1,17 @@
 results/
+outputs/runtime_repair_validation/
 .venv/
+configs/*.local.json
 .cache/
 dataset_downloads/
-generation/output/
 __pycache__/
 */__pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
-dataset/scene000430/
-dataset/scene000430_new/
-dataset/dorm_final/
+dataset/
+
+# Machine-specific notes and build artifacts
+*.local.*
+build/
+dist/

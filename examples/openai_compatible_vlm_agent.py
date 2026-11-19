@@ -13,11 +13,15 @@ from io import BytesIO
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
 import numpy as np
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from benchmark.agents.stream import serve
 
 
 SYSTEM = """You are HoloAgent, an embodied agent in an indoor simulator. Return JSON only.
@@ -54,6 +58,8 @@ def _image_url(value: Any) -> str | None:
 
 def _images(payload: dict[str, Any], limit: int = 4) -> list[str]:
     candidates = []
+    for observation in payload.get('observation_history', []):
+        candidates.extend((observation.get('images') or {}).values())
     observation = payload.get("observation", {})
     candidates.extend((observation.get("images") or {}).values())
     for view in payload.get("session_views", [])[-limit:]:
@@ -63,7 +69,7 @@ def _images(payload: dict[str, Any], limit: int = 4) -> list[str]:
 
 def _text(payload: dict[str, Any]) -> str:
     public = {key: value for key, value in payload.items()
-              if key not in {"observation", "session_views", "memory"}}
+              if key not in {"observation", "observation_history", "session_views", "memory"}}
     memory = payload.get("memory", {})
     return "Request:\n" + json.dumps(public, ensure_ascii=False) + \
            "\nMemory supplied by benchmark:\n" + json.dumps(memory, ensure_ascii=False)
@@ -185,16 +191,14 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=120.0)
     args = parser.parse_args()
     adapter = Adapter(args.endpoint, args.model, args.api_key, args.timeout)
-    for line in sys.stdin:
-        try:
-            payload = json.loads(line)
-            response = adapter.request(payload)
-            if payload.get("type") == "session_start" and not isinstance(response, dict):
-                response = {"ok": True}
-            print(json.dumps(response, ensure_ascii=False), flush=True)
-        except Exception as exc:  # keep protocol errors visible to the runner
-            print(f"adapter error: {exc}", file=sys.stderr, flush=True)
-            return 1
+    def handle(payload):
+        response = adapter.request(payload)
+        if payload.get("type") == "session_start" and not isinstance(response, dict):
+            response = {"ok": True}
+        if payload.get('type') == 'session_start' and payload.get('sequence_context', {}).get('reset_memory'):
+            response['sequence_reset_ack'] = payload['sequence_context']['run_id']
+        return response
+    serve(handle, history_frames=3)
     return 0
 
 

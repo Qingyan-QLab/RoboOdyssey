@@ -8,7 +8,7 @@ def _english(value: object, fallback: str = "Complete the current task.") -> str
         views = value.get("rooms", [])
         value = " ".join(str(item.get("text", "")) for item in views)
     text = str(value or "")
-    return text if text and all(ord(c) < 128 for c in text) else fallback
+    return text if text else fallback
 
 class ViewerOverlay:
     def __init__(self):
@@ -17,6 +17,7 @@ class ViewerOverlay:
         self._reset_requested = False
         self._operation_count = 0
         self._movement_count = 0
+        self._reset_count = 0
         self.window = ui.Window("Commander / User", width=560, height=190)
         try:
             self.window.position_x = 24
@@ -45,6 +46,8 @@ class ViewerOverlay:
         if event == "session_start":
             self._operation_count = 0
             self._movement_count = 0
+            self._reset_count = 0
+            self._reset.enabled = values.get('runtime_contract', {}).get('name') != 'contextual_requests'
             text = _english(values.get("session_instruction") or values.get("instruction"))
             poses = values.get("session_camera_poses") or []
             if poses and isinstance(poses[0], dict):
@@ -52,6 +55,8 @@ class ViewerOverlay:
                 if len(position) >= 3:
                     text += " | Initial camera pose: (%.2f, %.2f, %.2f)" % tuple(float(v) for v in position[:3])
             self._session.text = "Scene memory: " + text
+        elif event == "task_start":
+            self._operation_count = self._movement_count = 0
         elif event == "session_view":
             self._title.text = "SESSION VIEW  •  ROOM MEMORY"
             view_text = _english(values.get("view_text"), "Room view")
@@ -83,19 +88,24 @@ class ViewerOverlay:
             self._title.text = f"AGENT  •  {action_name}"
             self._body.text = _english(task)
         elif event == "task_complete":
-            self._title.text = "COMMANDER / USER  •  NEXT TASK"
+            self._title.text = "TASK RESULT  •  " + ('SUCCESS' if values.get('success') else 'FAILED' if values.get('success') is False else 'EXCLUDED')
             self._body.text = _english(task)
-        else:
+        elif event in {'task_repair', 'task_excluded', 'integration_error', 'agent_unsupported', 'agent_request'}:
+            self._title.text = {'task_repair':'REPAIRED REQUEST', 'task_excluded':'NOT DISPATCHED',
+                                'integration_error':'INTEGRATION ERROR','agent_unsupported':'UNSUPPORTED CAPABILITY',
+                                'agent_request':'WAITING FOR AGENT'}[event]
+            self._body.text = _english(task, str(values.get('error') or values.get('reason_code') or event))
+        elif task:
             self._title.text = "COMMANDER / USER"
             self._body.text = _english(task)
-        count = int(values.get("reset_count", 0))
-        self._reset.text = f"RESET ({count})"
+        self._reset_count = int(values.get("reset_count", self._reset_count))
+        self._reset.text = f"RESET ({self._reset_count})"
         after = values.get("after") or {}
         position = after.get("position") or []
         pose_text = ""
         if len(position) >= 2:
             pose_text = f" | pos=({float(position[0]):.2f},{float(position[1]):.2f})"
-        self._status.text = f"{values.get('scene_id','')} | {values.get('session_id','')} | task {values.get('task_id','')} ({values.get('task_type','')}) | steps {self._operation_count} | moves {self._movement_count} | resets {count}{pose_text}"
+        self._status.text = f"{values.get('scene_id','')} | {values.get('session_id','')} | task {values.get('task_id','')} ({values.get('task_type','')}) | steps {self._operation_count} | moves {self._movement_count} | resets {self._reset_count}{pose_text}"
 
     def transition(self, seconds=3.0, app=None):
         import omni.ui as ui

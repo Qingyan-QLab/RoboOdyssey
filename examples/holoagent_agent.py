@@ -18,8 +18,12 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 from urllib import error, request
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from benchmark.agents.stream import serve
 
 
 ACTION_NAMES = {
@@ -119,7 +123,9 @@ class HoloAgentAdapter:
     def request(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.dry_run:
             return {"action": {"action": "no_op"}, "done": False,
-                    "memory_update": {"adapter_dry_run": True}}
+                    "memory_update": {"adapter_dry_run": True},
+                    **({'sequence_reset_ack': payload['sequence_context']['run_id']}
+                       if payload.get('sequence_context', {}).get('reset_memory') else {})}
         if not self.endpoint:
             raise RuntimeError("set --endpoint or HOLOAGENT_ENDPOINT, or use --dry-run")
         response = _post_json(self.endpoint, {
@@ -136,6 +142,9 @@ class HoloAgentAdapter:
         elif request_type == "step":
             self.memory.update(payload.get("memory") or {})
         response = self.request(payload)
+        sequence = payload.get('sequence_context', {})
+        if sequence.get('reset_memory') and response.get('sequence_reset_ack') != sequence['run_id']:
+            raise RuntimeError('HoloAgent gateway must reset/isolate its sequence state and acknowledge run_id')
         update = response.get("memory_update")
         if isinstance(update, dict):
             self.memory.update(update)
@@ -152,22 +161,7 @@ def main() -> int:
                         help="keep protocol alive without calling HoloAgent")
     args = parser.parse_args()
     adapter = HoloAgentAdapter(args.endpoint, args.timeout, args.dry_run)
-    for line in sys.stdin:
-        if not line.strip():
-            continue
-        payload: dict[str, Any] = {}
-        try:
-            payload = json.loads(line)
-            if not isinstance(payload, dict):
-                raise ValueError("request must be a JSON object")
-            response = adapter.handle(payload)
-        except Exception as exc:
-            print(f"holoagent adapter error: {exc}", file=sys.stderr, flush=True)
-            response = {"action": {"action": "no_op"}, "done": True,
-                        "adapter_error": str(exc)} if payload.get("type") == "step" else {
-                            "memory_update": {"adapter_error": str(exc)}}
-        sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
+    serve(adapter.handle)
     return 0
 
 

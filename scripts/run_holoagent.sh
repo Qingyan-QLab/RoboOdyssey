@@ -7,6 +7,11 @@ unset PYTHONPATH PYTHONHOME PYTHONUSERBASE LD_LIBRARY_PATH
 export PYTHONNOUSERSITE=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Validate inputs on the host before starting any model services.
+ISAACSIM_PYTHON="${BENCHMARK_PYTHON:-python3}" "${ROOT}/run_benchmark.sh" --dry-run "$@"
+for arg in "$@"; do
+  case "${arg}" in --dry-run|-h|--help) exit 0 ;; esac
+done
 HOLOAGENT_ROOT="${HOLOAGENT_ROOT:-${ROOT}/../../../HoloAgent}"
 FSR_ROOT="${HOLOAGENT_ROOT}/agentic_robot/fsr_vln"
 # CUDA_VISIBLE_DEVICES below exposes only the compatible GPU, so it is cuda:0
