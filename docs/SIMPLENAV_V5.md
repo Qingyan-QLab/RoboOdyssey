@@ -30,7 +30,7 @@ SimpleNav 当前只支持导航；包含 QA 或 manipulation 的请求返回 `ag
 
 ## CPU 准备流程
 
-在 `longterm_benchmark/` 目录，用普通主机 Python 执行；不要为这些步骤使用 Isaac
+在 `RoboOdyssey/` 目录，用普通主机 Python 执行；不要为这些步骤使用 Isaac
 启动器。主机依赖为 numpy、Pillow，视频测试另需 ffmpeg／ffprobe 和 CPU libx264。
 
 ```bash

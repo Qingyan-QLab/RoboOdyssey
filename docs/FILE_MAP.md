@@ -14,7 +14,7 @@ scripts 只保留安装、联合启动及专项检查；重复包装入口已移
 ## 完整源码目录
 
 ```text
-longterm_benchmark/
+RoboOdyssey/
 ├── .github/
 │   └── workflows/
 │       └── test.yml

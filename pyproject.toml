@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "longterm-indoor-benchmark"
+name = "RoboOdyssey"
 version = "0.1.0"
-description = "Standalone long-horizon indoor evaluation harness for Isaac Sim"
+description = "Long-horizon embodied agent evaluation for continual adaptation across environments"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.23", "Pillow>=9.0"]

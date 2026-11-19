@@ -1,4 +1,12 @@
-# Long-Term Indoor Benchmark
+# RoboOdyssey｜万境长行
+
+RoboOdyssey 是面向具身智能体的长期、多场景仿真与评测项目。“万境”指家庭、工业、商场、医院及室外等不同环境；“长行”强调智能体在持续执行中积累记忆、适应变化，并将经验带到后续任务。
+
+## 设立背景
+
+机器人需要在不断变化的真实场景中长期工作：导航、取物、问询等任务会跨越不同地点、时间和情境。一次性的单场景成功率难以反映它能否记住经历、理解环境变化、持续适应并完成物理执行。RoboOdyssey 因此以多环境、长时序任务为方向，建立可复现的执行、取证和评测流程，为研究长期记忆与持续适应提供基础。
+
+当前仓库实现的是以 Isaac Sim 为基础的室内长程任务评测主流程；家庭、工业、商场、医院和室外等更广场景是项目的扩展方向，不代表现有数据集已全部覆盖。
 
 在 Isaac Sim 中执行长程导航、搬运和问答任务。当前主流程直接读取 **schema 5／contextual_requests v3** 发布数据，
 按真实世界状态修补请求和 GT，连续执行各 Session，再输出任务评分、运行审计和诊断视频。
@@ -11,7 +19,7 @@
 Python 3.10+。从源码目录使用主机 Python 做预检和分析：
 
 ```bash
-cd longterm_benchmark
+cd RoboOdyssey
 ./scripts/bootstrap.sh
 ./.venv/bin/python -m benchmark --help
 ```
@@ -22,7 +30,7 @@ Benchmark 的安装、校验、执行和测试均不依赖 Task Builder／Sessio
 ```text
 tools/
 ├── OSS/scene000010/session.tar
-└── longterm_benchmark/
+└── RoboOdyssey/
 ```
 
 Isaac Sim、SimpleNav 和模型权重分别安装在自己的环境中；主机环境只需 numpy、Pillow。
@@ -43,7 +51,7 @@ Isaac Sim、SimpleNav 和模型权重分别安装在自己的环境中；主机�
 
 首次读取 tar 时，在独立缓存解包，原始归档保持只读。默认缓存为
 `${XDG_CACHE_HOME:-~/.cache}/longterm-indoor-benchmark/datasets/<归档SHA-256>/`，
-可用 `BENCHMARK_DATA_CACHE` 指定有足够空间的位置；每次加载仍校验 manifest 和文件哈希。
+该缓存路径沿用旧项目标识；可用 `BENCHMARK_DATA_CACHE` 指定有足够空间的位置；每次加载仍校验 manifest 和文件哈希。
 支持的包内层级、版本和私有数据边界见 [发布数据契约](docs/DATA_FORMAT.md)。
 
 场景集合可使用 `--sequence seq_0001`、重复 `--sequence` 或 `--all-sequences`；

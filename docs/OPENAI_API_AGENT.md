@@ -80,7 +80,7 @@ HTTP 错误、限流、超时、无效输出、拒答和身份异常均作为 `i
 本仓库仅发布 SimpleNav 配置模板。API 实验需自行准备 `configs/openai_api/agent.local.json`，
 必填字段为 `model`、`log_dir`，其他可选字段及默认值见
 [`load_config` 与 `DEFAULTS`](../benchmark/agents/openai_api.py)。本机配置不纳入版本控制。
-在 `longterm_benchmark/` 执行：
+在 `RoboOdyssey/` 执行：
 
 ```bash
 ./scripts/bootstrap.sh

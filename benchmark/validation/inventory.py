@@ -211,7 +211,7 @@ def render(root=ROOT):
              '推荐使用：`python -m benchmark validate / preflight / experiment / run / analyze / check`。',
              'scripts 只保留安装、联合启动及专项检查；重复包装入口已移除。',
              '数据由发布 session.tar 或解包目录提供；运行与测试不依赖生成项目；统一 analyze 写入新目录。', '',
-             '## 完整源码目录', '', '```text', 'longterm_benchmark/']
+             '## 完整源码目录', '', '```text', 'RoboOdyssey/']
     def emit(branch, prefix=''):
         items = sorted(branch.items(), key=lambda item: (not bool(item[1]), item[0]))
         for i, (name, children) in enumerate(items):
