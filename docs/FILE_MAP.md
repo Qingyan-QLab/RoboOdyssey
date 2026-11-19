@@ -3,7 +3,7 @@
 由 `python -m roboodyssey inventory` 生成；`python -m roboodyssey inventory --check` 检查遗漏和过期。
 只维护生成器中的文件用途；目录、链接和主要定义从源码提取。无需同步改写 PROJECT_GUIDE。
 
-本页逐项列出 **114 个源码、配置、文档和测试文件**。
+本页逐项列出 **113 个源码、配置、文档和测试文件**。
 不导入被检查模块，不读取模型、视频或场景资产内容，不启动 Isaac/GPU。
 运行产物/本地文件按末尾目录模板说明，不逐项列出每次实验产生的重复文件。
 
@@ -146,7 +146,6 @@ RoboOdyssey/
 ├── NOTICE
 ├── PROJECT_GUIDE.md
 ├── README.md
-├── benchmark.py
 ├── environment.yml
 ├── pyproject.toml
 ├── requirements.txt
@@ -165,7 +164,6 @@ RoboOdyssey/
 | [NOTICE](../NOTICE) | 第三方代码及授权声明。 | — |
 | [PROJECT_GUIDE.md](../PROJECT_GUIDE.md) | 稳定的架构边界和维护原则；逐文件清单集中在本页。 | — |
 | [README.md](../README.md) | 安装、数据验证、实验执行、结果分析和扩展的使用入口。 | — |
-| [benchmark.py](../benchmark.py) | 现有 CI 在源码目录使用的命令行兼容入口。 | — |
 | [environment.yml](../environment.yml) | 可选 Conda 主机环境依赖。 | — |
 | [pyproject.toml](../pyproject.toml) | Python 包元数据、依赖、打包与测试配置。 | — |
 | [requirements.txt](../requirements.txt) | 主机 Python 的最小依赖。 | — |
