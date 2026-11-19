@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from copy import deepcopy
 from functools import partial
 from inspect import signature
 
@@ -35,17 +36,9 @@ def make_env_factory(
                 overview_path = None
             if video_options:
                 env.setup_review_capture(video_options['layout'])
-            first = next((item for item in dataset.sessions(scene_id) if item.session_id == session_id), None)
-            instruction = first.metadata.get("instruction") if first else None
-            start_pose = first.metadata.get("start_pose") if first else None
-            if initial_state.get('robot_base_pose'):
-                from copy import deepcopy
-                start_pose = deepcopy(initial_state['robot_base_pose'])
-                start_pose['position'][2] += env.config.camera_height
-            if start_pose is None and isinstance(instruction, dict):
-                start_pose = instruction.get("start_pose")
-            if start_pose:
-                env.set_agent_pose(start_pose)
+            start_pose = deepcopy(initial_state["robot_base_pose"])
+            start_pose["position"][2] += env.config.camera_height
+            env.set_agent_pose(start_pose)
             try:
                 from pxr import Gf, UsdGeom, UsdLux
                 dome = UsdLux.DomeLight.Define(env.stage, "/World/BenchmarkRuntime/DomeLight")

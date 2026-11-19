@@ -70,24 +70,19 @@ def serve(handler, *, history_frames=8, decode=None, on_observation=None,
             if decode:
                 payload = decode(payload)
             kind = payload.get('type')
-            if kind not in {'session_start', 'step', 'qa', 'observation'}:
+            if kind not in {'session_start', 'step', 'observation'}:
                 raise ValueError('unknown request type: ' + str(kind))
             if kind == 'session_start':
                 if payload.get('scene_id') != scene_id or payload.get('sequence_context', {}).get('reset_memory'):
                     history.clear()
                 scene_id, task_key = payload.get('scene_id'), None
-                # Legacy introductions are delivered as a session_views batch;
-                # preserve them in Agent memory for subsequent model calls.
-                for view in payload.get('session_views') or []:
-                    if view.get('observation'):
-                        history.append(view['observation'])
             key = (payload.get('scene_id'), payload.get('session_id'), payload.get('task_id'))
             if kind == 'observation' and key != task_key:
                 raise ValueError('observation belongs to a different task')
             if kind != 'observation':
                 if busy.is_set():
                     raise ValueError('only one action request may be in flight')
-                if kind in {'step', 'qa'}:
+                if kind == 'step':
                     task_key = key
                 payload['observation_history'] = list(history)
             observation = payload.get('observation')

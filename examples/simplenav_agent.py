@@ -40,7 +40,7 @@ def _url_parts(url: str) -> tuple[str, int]:
 # The pure state machine is importable without the SimpleNav model stack.
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from roboodyssey.agents.simplenav import SimpleNavAgent, simple_action as _simple_action, instruction_text as _instruction_text
+from roboodyssey.agents.simplenav import SimpleNavAgent
 from roboodyssey.agents.stream import serve
 
 

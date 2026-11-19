@@ -1,6 +1,7 @@
 """Standalone release-data ingestion, integrity and boundary mutation checks."""
 from copy import deepcopy
 import io
+import json
 from pathlib import Path
 import tarfile
 import tempfile
@@ -9,7 +10,7 @@ from unittest.mock import patch
 
 from roboodyssey.artifacts.layout import sha256_file, write_json
 from roboodyssey.data.archive import dataset_root
-from roboodyssey.data.frozen import SequenceData, select_sequences
+from roboodyssey.data.frozen import select_sequences
 from roboodyssey.scenes.dataset_loader import BenchmarkDataset
 from roboodyssey.validation.dataset import validate
 from tests.frozen_data import fixture_v3, select_scenario, write_dataset
@@ -74,9 +75,12 @@ class PublishedDataTests(unittest.TestCase):
                  'query': 'room_after', 'history': {'session_id': 'session_000', 'task_id': 'move', 'goal_id': 'transfer_book_red'}}]}])
             manifest = write_dataset(root, select_scenario(c, plan), c, inputs)
             manifest['sessions'].reverse()
-            write_json(root/'dataset_manifest.json', manifest)
+            write_json(root/'sequences/seq_fixture/dataset_manifest.json', manifest)
+            index = json.loads((root/'scene_manifest.json').read_text())
+            index['sequences']['seq_fixture']['sha256'] = sha256_file(root/'sequences/seq_fixture/dataset_manifest.json')
+            write_json(root/'scene_manifest.json', index)
             with self.assertRaisesRegex(ValueError, 'session order'):
-                BenchmarkDataset(root)
+                BenchmarkDataset(root/'sequences/seq_fixture')
 
     def test_download_accepts_published_wrapper_and_verifies_before_copy(self):
         from roboodyssey.cli import _download
@@ -101,7 +105,7 @@ class PublishedDataTests(unittest.TestCase):
             root = Path(tmp)/'data'
             c, inputs, plan = fixture_v3()
             write_dataset(root, select_scenario(c, plan), c, inputs)
-            context = SequenceData(root).mutation_context()
+            context = BenchmarkDataset(root)._requests.mutation_context()
             state = {'objects': {o['object_id']: deepcopy(o) for o in inputs['metadata']['objects']},
                      'held_object': None, 'robot_pose': {'position': [.4, .4, 0]}}
             mutation = {'changes': [{'object_id': 'book_red', 'relation_after': {'room_id': 'kitchen'}}]}
@@ -115,6 +119,31 @@ class PublishedDataTests(unittest.TestCase):
             state['held_object'] = 'book_red'
             skipped = prepare_mutation(context, mutation, state, history)
             self.assertEqual(skipped['status'], 'skipped')
+
+    def test_removed_input_versions_are_rejected_before_environment_start(self):
+        from roboodyssey.data.frozen import read
+        for field, value in (('schema_version', 1), ('schema_version', 4), ('layout_version', 1),
+                             ('runtime_contract', {'name': 'contextual_requests', 'version': 1}),
+                             ('runtime_contract', {'name': 'contextual_requests', 'version': 2})):
+            with self.subTest(field=field, value=value), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)/'data'
+                c, inputs, plan = fixture_v3()
+                write_dataset(root, select_scenario(c, plan), c, inputs)
+                sequence = root/'sequences/seq_fixture'
+                manifest = read(sequence/'dataset_manifest.json')
+                manifest[field] = value
+                write_json(sequence/'dataset_manifest.json', manifest)
+                with self.assertRaisesRegex(ValueError, 'unsupported'):
+                    BenchmarkDataset(sequence)
+                self.assertTrue(validate(sequence))
+
+    def test_removed_import_paths_are_unavailable(self):
+        import importlib
+        for name in ('roboodyssey.legacy.task_repair', 'roboodyssey.runtime.task_repair',
+                     'roboodyssey.runtime.sequence_runs', 'roboodyssey.contracts.calendar',
+                     'roboodyssey.evaluation.accounting', 'roboodyssey.reporting.legacy'):
+            with self.subTest(module=name), self.assertRaises(ModuleNotFoundError):
+                importlib.import_module(name)
 
     def test_no_source_module_imports_generation_packages(self):
         import ast

@@ -11,9 +11,7 @@ from ..artifacts.layout import local_path, safe_id, sha256_file
 
 
 METRIC_VERSION = 'progress_path_v3'
-LEGACY_METRIC_VERSION = 'progress_path_v1'
-BINARY_TRANSFER_METRIC_VERSION = 'progress_path_v2'
-SUPPORTED_METRIC_VERSIONS = {LEGACY_METRIC_VERSION, BINARY_TRANSFER_METRIC_VERSION, METRIC_VERSION}
+SUPPORTED_METRIC_VERSIONS = {METRIC_VERSION}
 NAVIGATION = {'visit', 'establish_place', 'revisit_place'}
 METRIC_POLICY = {
     'version': METRIC_VERSION, 'range': [0, 100],
@@ -159,15 +157,13 @@ def evaluate_metrics(truth, before, after, poses, actions, outcome, *, reference
                      timing=None, metric_version=METRIC_VERSION):
     if metric_version not in SUPPORTED_METRIC_VERSIONS:
         raise ValueError('unsupported evaluation metric version: '+str(metric_version))
-    legacy = metric_version == LEGACY_METRIC_VERSION
     reference = reference or {'status': 'unavailable', 'reason': 'reference_not_recorded'}
     value = {'version': metric_version, 'score_max': 100, 'score': None,
         'status': 'ready', 'reference': deepcopy(reference), 'navigation': None,
         'goal_scores': [], 'measurements': {'steps': len(actions), **(timing or {})},
         'step_efficiency_score': None, 'time_efficiency_score': None,
         'cost_reference_status': 'no_verified_gt_steps_or_wall_time'}
-    if metric_version == METRIC_VERSION:
-        value['transfers'] = []
+    value['transfers'] = []
     if timing:
         for key in ('elapsed_seconds','agent_wait_seconds','action_seconds'):
             if not math.isfinite(timing[key]) or timing[key] < 0:
@@ -178,7 +174,7 @@ def evaluate_metrics(truth, before, after, poses, actions, outcome, *, reference
             raise ValueError('task timing component exceeds elapsed time')
     if outcome.get('scored') is False:
         return {**value, 'status': 'excluded'}
-    if outcome.get('agent_status') == 'unsupported' or (legacy and outcome.get('reason_code') == 'forbidden_question_action'):
+    if outcome.get('agent_status') == 'unsupported':
         return {**value, 'score': 0.0}
     evidence = {g['goal_id']: g for g in outcome['goal_results']}
     nav_goals = [g for g in truth['goals'] if g['goal_kind'] in NAVIGATION]
@@ -220,42 +216,26 @@ def evaluate_metrics(truth, before, after, poses, actions, outcome, *, reference
             components = {'acquired': bool(acquired or item['success']),
                           'at_destination': bool(destination or item['success']),
                           'valid_place_and_release': item['success'] is True}
-            if legacy:
-                score = 100*sum(components.values())/3
-            elif metric_version == BINARY_TRANSFER_METRIC_VERSION:
-                score = 100*float(item['success'])
+            score = None
+            try:
+                if not isinstance(grid, TransferReference):
+                    raise ValueError(reference.get('reason', 'transfer_cost_reference_missing'))
+                metric = transfer_metric(goal, grid, before, after, actions, item['success'])
+                score = metric['score']
+                value['transfers'].append(metric)
+            except (KeyError, ValueError) as exc:
+                value.update(status='unavailable', reason=str(exc))
+        elif kind == 'answer':
+            if 'prediction' in outcome:
+                correct = contextual_answer_correct(outcome['prediction'], goal['expected_outcome'])
+            else:
+                correct = item.get('answer_correct')
+            components = {'answer_correct': correct}
+            if type(correct) is bool:
+                score = 100*float(correct)
             else:
                 score = None
-                try:
-                    if not isinstance(grid, TransferReference):
-                        raise ValueError(reference.get('reason', 'transfer_cost_reference_missing'))
-                    metric = transfer_metric(goal, grid, before, after, actions, item['success'])
-                    score = metric['score']
-                    value['transfers'].append(metric)
-                except (KeyError, ValueError) as exc:
-                    value.update(status='unavailable', reason=str(exc))
-        elif kind == 'answer':
-            if not legacy:
-                # Historical success can include inspection/action restrictions.
-                # Recompute correctness from the saved final answer when present.
-                if 'prediction' in outcome:
-                    correct = contextual_answer_correct(outcome['prediction'], goal['expected_outcome'])
-                else:
-                    correct = item.get('answer_correct')
-                components = {'answer_correct': correct}
-                if type(correct) is bool:
-                    score = 100*float(correct)
-                else:
-                    score = None
-                    value.update(status='unavailable', reason='answer_correctness_evidence_missing')
-            else:
-                valid = item.get('observation_valid', not goal.get('inspection_contract')) is True
-                if goal.get('inspection_contract'):
-                    components = {'valid_inspection': valid, 'valid_answer': item['success'] is True}
-                    score = 50*sum(components.values())
-                else:
-                    components = {'valid_answer': item['success'] is True}
-                    score = 100*float(item['success'])
+                value.update(status='unavailable', reason='answer_correctness_evidence_missing')
         else:
             raise ValueError('unsupported metric goal kind: '+str(kind))
         value['goal_scores'].append({'goal_id': goal['goal_id'], 'kind': kind,

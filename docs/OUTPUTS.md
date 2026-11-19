@@ -3,8 +3,7 @@
 本页只维护文件格式、位置和证据引用；执行与评分定义见 [RULES](RULES.md)。
 输入 dataset schema、运行时任务契约和**结果目录布局**是三个独立版本。
 新 v5 运行根部 `manifest.json` 使用 `artifact_schema=benchmark_results`、`schema_version=2`。
-没有该文件的历史运行按旧 `scenes/<scene>/sessions/<session>` 布局读取，不改变旧文件。
-旧 schema 1／4 执行仍写旧结果布局。
+读取结果须提供该 manifest；缺失或不支持的布局明确报错。
 
 ## 根目录类型
 
@@ -14,7 +13,6 @@
 | `collection` | `benchmark run --all-sequences`／重复 `--sequence` | 同上，不管理外部模型服务 |
 | `run` | 单次运行或实验子运行 | `sequences[].sessions_root` 指向各场景的 Session 目录 |
 
-实验的旧独立 v5 归档没有 sequence_id 时使用 `default_000`；普通单次运行使用 `default`。
 不要通过目录名推断场景或契约，使用 manifest 中的身份与相对路径。
 实验／集合的 `runs` 列出所有计划子运行，未完成的子运行也不能从统计中消失。
 
@@ -75,8 +73,7 @@ evaluation.transfers 保存逐目标 J0、J、C、进展、效率、得分、动
 搬运动作另存 transfer_collision_before_sha256／transfer_collision_after_sha256，
 核验移除／放回目标后重建的占据和通行半径与实际环境相同；不为每步重复保存完整地图。
 action_changelog 另存每次 request_seconds 和 action_seconds。
-离线分析校验参考哈希、动作／状态变化和结果中的评价一致性。旧结果没有这些字段时保留原二元评分，
-不把旧 reference_steps 或前序全成功位置变成新的实际基准。
+离线分析校验参考哈希、动作／状态变化和结果中的评价一致性。缺失指标或参考证据时任务分为 null，不能用成功率或计划轨迹补成实际评分。
 
 汇总 score_100 为 0–100；task_score 为相同得分的 0–1 表示，task_success_rate 为独立完整成功率。
 metric_version、metrics_complete 和 tasks_missing_metric 必须随分数读取；部分任务指标缺失不能减少分母。
@@ -86,13 +83,13 @@ step_efficiency_score／time_efficiency_score 缺少已验证的 GT 成本时为
 `direction=observation`、`request_type=observation` 的记录包括：`event=sample` 的 frame_id、
 采样时刻、延迟和漏采数；`event=send_attempt` 的实际 observation 消息（图像为摘要）；
 `event=sent` 的 frame_id 和 sent_monotonic_s，表示完整消息已写入管道。
-新流程没有 drop 事件或 latest_only 缓存；旧日志中的这些字段保留原义。
+观测采样与发送通过逐帧事件记录，不设置丢帧缓存。
 独立 observation 不计动作步数，不触发新的动作响应。发送失败以 integration_errors 和运行错误收尾。
 真实请求的 `payload.observation.timing` 对应使用的采样帧及下发时刻，字段见 [协议](PROTOCOL.md#观测与时间)。
 结合 sample 事件计算实际采样率，合并 request 中的初始帧和 sent 中的持续观测计算下发率；配置 fps 不能替代实测值。
 响应／v5 动作日志的 observation_frame_id 限定该次评分可使用的观察证据截止帧；request_id 关联请求和响应。
 
-新 `trace_schema=2` 将结果／历史中的重复 `actions` 替换为：
+`trace_schema=2` 使用以下结构引用结果／历史的动作证据：
 
 ```json
 {"action_evidence":{"scope":"session","file":"traces/action_changelog.jsonl","task_id":"task_000","count":2000}}
@@ -117,7 +114,7 @@ API Agent 将配套日志写入配置的 `log_dir/<instance_id>/`，例如
 | `summary.json` | Agent 客户端状态、输入策略／反馈档位、调用和图像上传计数、prompt／初始状态上传次数、响应链 run_id、已知用量累计、缺失用量次数、调用累计延迟和未核实费用 `null`。 |
 
 帧清单只含本次当前帧，不再保存显式记忆；日志不保存发送的完整 PNG 或服务端错误正文。
-`run_id + scene_id/session_id/task_id/request_id` 用于关联公开请求；旧归档缺少 run_id 时结合实例目录和启动日志定位。
+`run_id + scene_id/session_id/task_id/request_id` 用于关联公开请求。
 Agent 的 `client_status=closed` 仅代表客户端收尾，不证明 benchmark 有效或完成。
 缺失用量不能按零费用解释。usage 累计的是 API 返回的计量 token，可能包括再次计量的会话历史；
 上传字符数和上传图像计数不能代替计费 token。deadline 到达后远端请求可能仍计费，
@@ -135,7 +132,7 @@ Agent 的 `client_status=closed` 仅代表客户端收尾，不证明 benchmark 
 - 集合的 `sequence_NNN/` 与 `aggregate.json`：逐序列报告和原汇总副本。
 
 自动修补报告位于子运行 `reports/request_audit.*`；统一分析可位于实验 `reports/` 或显式新目录。
-新旧运行都使用统一 analyze 入口重建到新目录，避免覆盖已发布报告。
+运行报告使用统一 analyze 入口重建到新目录，避免覆盖已发布报告。
 报告可重建，原始日志不可由分析器改写。移动结果时同时保留视频相对目录；来源 JSON 保留原绝对路径供追溯。
 
 显式 `--rescore` 报告另存 rescored、original_task_score／original_metric_version，
@@ -145,4 +142,3 @@ summary 含逐 Session／任务类型分组、网格评分与记录耗时汇总�
 历史时间另存 recorded_task_span_seconds、recorded_agent_roundtrip_seconds；缺失动作计时不补写。
 
 新版启动/目录由 CPU 夹具验证。真实历史运行的离线数值回归不等价于重新运行模型或物理实验。
-不同契约的分析支持范围见 [旧版本兼容](RULES.md#legacy)。

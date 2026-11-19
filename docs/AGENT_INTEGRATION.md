@@ -12,10 +12,9 @@ Gateway 会递归拒绝 `ground_truth`、`expected_outcome`、参考轨迹等私
 
 - session_start：包含 scene_id、session_id、session instruction、task IDs 和
   agent 自己维护的 memory；
-- step：包含当前 task、视觉 observation、当前 memory、上一动作和结果；
-- qa：包含问题、视觉 observation、当前 memory 和 answer type。
+- step：包含当前任务文本、capabilities、response_mode、视觉 observation、memory 和普通动作反馈。
 
-QA 按任务列表即时发送，不会在 session 末尾集中发送。
+导航、搬运和问答均通过 step 循环执行；actions_and_answer 请求在动作响应中携带 answer。
 推理期间还有独立 observation 消息，接收器必须持续读取；流式握手、关联字段及共用接收器见
 [PROTOCOL](PROTOCOL.md#请求与响应)。下述响应示例只展示动作／答案主体，接收器须补齐 request_id 和 observation_frame_id。
 
@@ -36,34 +35,23 @@ step 响应：
 
 环境按二维半径 `0.1 m` 的圆形 agent footprint 进行路径碰撞检测。若超长移动
 遇到障碍，环境会在碰撞前约 `0.1 m` 停止，并在下一次请求的
-`observation.action_feedback` 与 `previous_result` 中返回 `collision`、
+`observation.action_feedback` 中返回 `collision`、
 `executed_distance` 和 `reason`。SimpleNav 的恢复策略见 [适配说明](SIMPLENAV_V5.md)。
-
-旧版 pick/place 可携带 object_id、target 或 room_id：
-
-~~~json
-{"action":{"action":"pick","object_id":"corridor1_vase002"}}
-{"action":{"action":"place","room_id":"kitchen1"}}
-~~~
 
 v5 不公开或接受 object_id／room_id 操作句柄。pick 使用已介绍的公开名称，例如
 `{"action":"pick","target":"reading book"}`；place 在当前位置释放持物。
 公开字段和完整请求循环见 [协议](PROTOCOL.md)。
 
-QA 响应：
+问答 step 响应：
 
 ~~~json
-{"answer":"kitchen"}
+{"action":"no_op","answer":"kitchen","done":true}
 ~~~
 
 合法动作是 no_op、move_forward、move_backward、move_left、move_right、turn_left、turn_right、
-look_up、look_down、pick、place、open、close 和 reset。SimpleNav 不直接预测
-open/close；旧版接近并碰撞关闭的门时适配器会自动发出 open，并在日志中标记
-`action_source=adapter_auto`、`agent_requested=false`。未知动作、无效 JSON、进程退出
-和超时的处理见 [结果分类](RULES.md#exclusions)。
-
-v5 没有私有附近物体清单，因此不启用上述自动开门。SimpleNav 只支持导航；
-QA／操作返回 unsupported，后端错误使用 integration_error。
+look_up、look_down、pick、place、open、close 和 reset。
+SimpleNav 仅支持导航，不直接预测抓放或开关门；问答／操作请求返回 unsupported，后端错误返回 integration_error。
+未知动作、无效 JSON、进程退出和超时按 [结果分类](RULES.md#exclusions) 处理。
 代码准备、CPU 预检、GUI／录像启动和失败修补报告见
 [SimpleNav v5](SIMPLENAV_V5.md)。
 
@@ -76,11 +64,11 @@ Agent 入口，使用 `roboodyssey/agents/openai_api.py` 和 Responses 响应链
 本仓库仅发布 SimpleNav 配置模板；API 实验使用自行准备的 `configs/openai_api/agent.local.json`，不传给 SimpleNav 实验管理器。
 模型 ID、API 参数、离线检查、诊断／正式命令及费用记录见 [API Agent 专题](OPENAI_API_AGENT.md)。
 
-旧 `openai_compatible_vlm_agent.py` 仍被 HoloAgent 组合服务导入，两条入口独立。
+`openai_compatible_vlm_agent.py` 提供无状态视觉服务适配，也供 HoloAgent 组合服务使用。
 
 ## Manipulation
 
-pick 只能作用于 builder 的 pick/place candidate，且对象必须在 avatar 可达范围内。
+pick 只能作用于发布数据中冻结的 pick/place candidate，且对象必须在 avatar 可达范围内。
 持有对象会显示在第一人称画面右下方，并随 avatar 移动。place 必须发生在 agent
 当前所在房间；对象随后解除附着，写入 session 的实际 state change。
 
@@ -92,7 +80,8 @@ pick 只能作用于 builder 的 pick/place candidate，且对象必须在 avata
 - OpenAI-compatible VLM：视觉操作、QA，以及 `memory_update`。
 
 至少配置一个后端。完整能力运行时同时提供导航后端和 `--vlm-endpoint/--vlm-model`。
-没有对应后端的能力返回明确的 `*_not_configured` 状态。
+按公开 capabilities 分流；没有对应后端的能力明确返回 unsupported。
+操作后端仅依据图像、公开名称和 action_feedback 做决策。live OVO 每个独立序列须重启服务，以隔离在线地图。
 
 ## 新增模型适配
 

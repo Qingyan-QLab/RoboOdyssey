@@ -1,5 +1,4 @@
 """SimpleNav protocol state machine. Backends are injected; importing is CPU-only."""
-from copy import deepcopy
 import math
 import numpy as np
 
@@ -7,8 +6,6 @@ import numpy as np
 def instruction_text(value):
     if isinstance(value, str):
         return value
-    if isinstance(value, dict):
-        return ' '.join(str(r.get('text', '')) for r in value.get('rooms', []))
     return str(value or '')
 
 
@@ -56,15 +53,8 @@ class SimpleNavAgent:
             for text in request.get('scene_briefing', []):
                 if text not in self.definitions:
                     self.definitions.append(text)
-            for view in request.get('session_views') or []:
-                observation = view.get('observation') or {}
-                image = observation.get('images', {}).get('front')
-                if image is not None:
-                    self.history.images.append(image)
-                    self.history.observations.append(observation)
-                    self.history.instructions.append(view.get('text') or self.context)
             return {'memory_update': {}, **({'sequence_reset_ack': sequence['run_id']} if sequence.get('reset_memory') else {})}
-        if kind not in {'step', 'qa'}:
+        if kind != 'step':
             raise ValueError('unknown request type: ' + str(kind))
         key = (request.get('session_id'), request.get('task_id'))
         if key != self.task_key:
@@ -75,29 +65,24 @@ class SimpleNavAgent:
                     self.definitions.append(text)
             self.requests.append({'time': request.get('current_time'), 'instruction': request.get('instruction', '')})
             self.requests = self.requests[-32:]
-        task_type = request.get('task_type', 'navigation')
+        task_type = request.get('task_type')
+        if task_type != 'long_horizon':
+            raise ValueError('expected a long_horizon request')
         caps = set(request.get('capabilities', []))
-        if task_type == 'long_horizon' and not caps:
+        if not caps:
             raise ValueError('v5 request is missing public capabilities')
-        unsupported = ('qa' if kind == 'qa' or 'qa' in caps else
+        unsupported = ('qa' if 'qa' in caps else
                        'manipulation' if 'manipulation' in caps else
-                       task_type if task_type not in {'navigation', 'long_horizon'} else None)
-        if unsupported or (task_type == 'long_horizon' and 'navigation' not in caps):
+                       None)
+        if unsupported or 'navigation' not in caps:
             return {'action': {'action': 'no_op'}, 'answer': '', 'done': True,
                     'agent_status': 'unsupported', 'reason_code': 'simplenav_unsupported_' + (unsupported or 'capability')}
         observation_input = request.get('observation') or {}
         if observation_input.get('images', {}).get('front') is None:
             raise ValueError('SimpleNav requires a front RGB image')
-        feedback = observation_input.get('action_feedback') or request.get('previous_result') or {}
+        feedback = observation_input.get('action_feedback') or {}
         self.collision_streak = self.collision_streak + 1 if feedback.get('collision') else 0
         allowed = request.get('allowed_actions')
-        # Legacy affordances remain available only on the legacy protocol.
-        if task_type != 'long_horizon':
-            door = next((d for d in observation_input.get('nearby_doors', [])
-                         if not d.get('open') and d.get('distance_m', 999) <= 1), None)
-            if door and (feedback.get('collision') or door['distance_m'] <= .6):
-                return {'action': {'action': 'open', 'object_id': door['object_id']}, 'done': False,
-                        'action_source': 'adapter_auto', 'agent_requested': False}
         if (self.collision_reset_threshold > 0 and self.collision_streak >= self.collision_reset_threshold
                 and (allowed is None or 'reset' in allowed)):
             self.collision_streak = 0

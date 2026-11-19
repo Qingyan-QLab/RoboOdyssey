@@ -145,14 +145,12 @@ def preflight(config):
         return found
     check('agent_package_specs_no_import',packages)
     def dataset():
-        from ..scenes.dataset_loader import BenchmarkDataset
         datasets = selected_datasets(config)
         return {'sequences': [inspect_dataset(data) for data in datasets]}
     def inspect_dataset(data):
-        if data.manifest.get('schema_version')!=5: raise ValueError('this launch profile requires v5')
         for scene in data.scene_ids():
             asset = data.scene_asset(scene)
-            asset_info = data._requests.asset() if data._requests else data.manifest['scene_asset']
+            asset_info = data._requests.asset()
             if sha256_file(asset)!=asset_info['sha256']: raise ValueError('scene asset hash mismatch')
         return {**data.sequence_identity(),'dataset':str(data.root),'scenes':data.scene_ids(),'sessions':sum(len(data.sessions(s)) for s in data.scene_ids()),
                 'tasks':sum(len(session.tasks) for s in data.scene_ids() for session in data.sessions(s))}

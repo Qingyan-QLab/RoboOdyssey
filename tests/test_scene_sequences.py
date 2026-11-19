@@ -70,8 +70,11 @@ class SequenceIntegrationTests(unittest.TestCase):
             root = self.collection(Path(tmp) / 'scene')
             data = BenchmarkDataset(root, sequence_id='sequence_A')
             output = Path(tmp) / 'run'
+            class NoResetAgent(Agent):
+                def request(self,payload,on_wait=None):
+                    return {}
             with self.assertRaisesRegex(ValueError, 'acknowledge'):
-                SessionRunner(output, Agent(), max_steps=1).run_scene('synthetic_demo', data.sessions('synthetic_demo'),
+                SessionRunner(output, NoResetAgent(), max_steps=1).run_scene('synthetic_demo', data.sessions('synthetic_demo'),
                     data.canonical_state('synthetic_demo'), lambda _, state, sid: Env(state))
             report = write_summary(data, output)
             self.assertFalse(report['evaluation_valid'])
@@ -92,7 +95,7 @@ class SequenceIntegrationTests(unittest.TestCase):
                 launched.append((command, kwargs))
                 target = Path(command[command.index('--run-directory') + 1])
                 target.mkdir(parents=True)
-                (target / 'summary.json').write_text(json.dumps({'evaluation_valid': True, 'task_score': .5}))
+                (target / 'summary.json').write_text(json.dumps({'evaluation_valid': True, 'task_score': .5, 'task_success_rate': .5, 'metric_version': 'progress_path_v3', 'metrics_complete': True}))
                 from types import SimpleNamespace
                 return SimpleNamespace(wait=lambda: 0, poll=lambda: 0, pid=99999999)
             output = Path(tmp) / 'results'
@@ -112,7 +115,7 @@ class SequenceIntegrationTests(unittest.TestCase):
         self.assertNotIn('--sequence', args)
         self.assertIn('python my_agent.py', args)
         self.assertEqual(args[-4:], ['--dataset', 'scene/sequences/A', '--output', 'output/A'])
-        good = {'exit_code': 0, 'summary': {'evaluation_valid': True, 'task_score': .75}}
+        good = {'exit_code': 0, 'summary': {'evaluation_valid': True, 'task_score': .75, 'metric_version':'progress_path_v3', 'metrics_complete':True}}
         self.assertEqual(aggregate_runs([good])['task_score'], .75)
         bad = {'exit_code': 1, 'summary': {'evaluation_valid': True, 'task_score': 1}}
         self.assertFalse(aggregate_runs([good, bad])['evaluation_valid'])

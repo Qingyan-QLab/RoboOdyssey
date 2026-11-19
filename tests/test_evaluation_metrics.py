@@ -1,3 +1,5 @@
+from tests.frozen_data import result_session
+from roboodyssey.artifacts.layout import session_file
 """CPU contract tests for partial credit, route costs and immutable references."""
 from copy import deepcopy
 import json
@@ -9,7 +11,7 @@ import numpy as np
 
 from roboodyssey.evaluation.navigation import GridDistance, OrderedRoute
 from roboodyssey.evaluation.task_metrics import (
-    METRIC_VERSION, LEGACY_METRIC_VERSION, BINARY_TRANSFER_METRIC_VERSION,
+    METRIC_VERSION,
     evaluate_metrics, navigation_metric, metric_totals, prepare_reference, load_reference,
 )
 
@@ -153,20 +155,6 @@ class SemanticMetricTests(unittest.TestCase):
                 'goal_results':[{'goal_id':'g','success':False}]}
         return {'task_id':'t','goals':[goal]},before,result
 
-    def test_v2_binary_transfer_scores_remain_reproducible(self):
-        gt,before,result=self.base()
-        pick={'action':'pick','result':{'success':True,'object_id':'book'}}
-        self.assertEqual(evaluate_metrics(gt,before,before,[],[],result,metric_version=BINARY_TRANSFER_METRIC_VERSION)['score'],0)
-        self.assertEqual(evaluate_metrics(gt,before,before,[],[pick],result,metric_version=BINARY_TRANSFER_METRIC_VERSION)['score'],0)
-        carried=deepcopy(before);carried['objects']['book'].update(room_id='study',held=True)
-        partial=evaluate_metrics(gt,before,carried,[],[pick],result,metric_version=BINARY_TRANSFER_METRIC_VERSION)
-        self.assertEqual(partial['score'],0)
-        self.assertEqual(partial['goal_scores'][0]['components'],
-            {'acquired':True,'at_destination':True,'valid_place_and_release':False})
-        # Location alone without controlling the object must not earn delivery credit.
-        self.assertEqual(evaluate_metrics(gt,before,carried,[],[],result,metric_version=BINARY_TRANSFER_METRIC_VERSION)['score'],0)
-        result['success']=result['goal_results'][0]['success']=True
-        self.assertEqual(evaluate_metrics(gt,before,carried,[],[pick],result,metric_version=BINARY_TRANSFER_METRIC_VERSION)['score'],100)
 
     def test_qa_only_answer_correctness_scores_regardless_of_inspection_or_old_success(self):
         gt,before,result=self.base('answer');gt['goals'][0]['inspection_contract']={'object_id':'book'}
@@ -186,23 +174,6 @@ class SemanticMetricTests(unittest.TestCase):
         self.assertIsNone(excluded['score'])
         self.assertEqual(excluded['status'],'excluded')
 
-    def test_legacy_semantic_scores_are_reproducible_and_versions_never_mix(self):
-        gt,before,result=self.base()
-        pick={'action':'pick','result':{'success':True,'object_id':'book'}}
-        old=evaluate_metrics(gt,before,before,[],[pick],result,metric_version=LEGACY_METRIC_VERSION)
-        new=evaluate_metrics(gt,before,before,[],[pick],result,metric_version=BINARY_TRANSFER_METRIC_VERSION)
-        self.assertAlmostEqual(old['score'],100/3)
-        self.assertEqual(new['score'],0)
-        self.assertAlmostEqual(metric_totals([result|{'evaluation':old}])['score_100'],100/3)
-        mixed=metric_totals([result|{'evaluation':old},result|{'evaluation':new}])
-        self.assertIsNone(mixed['score_100'])
-        self.assertFalse(mixed['metrics_complete'])
-        gt,before,result=self.base('answer')
-        gt['goals'][0]['inspection_contract']={'object_id':'book'}
-        result['goal_results'][0].update(observation_valid=True,answer_correct=False)
-        self.assertEqual(evaluate_metrics(gt,before,before,[],[],result,metric_version=LEGACY_METRIC_VERSION)['score'],50)
-        result['reason_code']='forbidden_question_action'
-        self.assertEqual(evaluate_metrics(gt,before,before,[],[],result,metric_version=LEGACY_METRIC_VERSION)['score'],0)
 
     def test_qa_final_prediction_is_authoritative_and_missing_evidence_is_not_zero(self):
         gt,before,result=self.base('answer')
@@ -219,7 +190,6 @@ class SemanticMetricTests(unittest.TestCase):
         gt,before,result=self.base()
         gt['goals'].append({'goal_id':'a','goal_kind':'answer','target':{'object_ids':['book']}})
         result['goal_results'].append({'goal_id':'a','success':True,'answer_correct':True})
-        self.assertEqual(evaluate_metrics(gt,before,before,[],[],result,metric_version=BINARY_TRANSFER_METRIC_VERSION)['score'],50)
         self.assertIsNone(evaluate_metrics(gt,before,before,[],[],result)['score'])
 
     def test_missing_reference_preserves_denominator_and_timing_does_not_invent_costs(self):
@@ -235,40 +205,6 @@ class SemanticMetricTests(unittest.TestCase):
 
 
 class ReproducibilityTests(unittest.TestCase):
-    def test_old_qa_run_keeps_v1_score_until_explicit_rescore_and_preserves_success(self):
-        from roboodyssey.evaluation.task_diagnostics import analyze_run
-        with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp)/'run';session=root/'scenes/s/sessions/session_000'
-            session.mkdir(parents=True)
-            gt,before,result=SemanticMetricTests().base('answer')
-            gt['state_assumption']='actual_predispatch_state'
-            gt['goals'][0].update(expected_outcome={'answer_type':'room','accepted_answers':['study']},
-                inspection_contract={'object_id':'book','min_visible_pixels':8,'max_distance_m':2})
-            before['robot_pose']=pose(5.5)
-            result.update(dispatched=True,agent_status='ok',reason_code='agent_done',steps=0,prediction='study')
-            result['goal_results'][0].update(observation_valid=False,answer_correct=True)
-            result['evaluation']=evaluate_metrics(gt,before,before,[pose(5.5)],[],result,metric_version=LEGACY_METRIC_VERSION)
-            public={'task_id':'t','instruction':'Where is the book?'}
-            task={'original':public,'original_ground_truth':gt,'state_before':before,
-                'repair':{'status':'ready','public_task':public,'runtime_ground_truth':gt,'repair_record':{}}}
-            for name,rows in [('runtime_tasks.jsonl',[task]),('request_outcomes.jsonl',[result]),
-                              ('agent_io.jsonl',[{'direction':'request','request_type':'step','task_id':'t','payload':public}])]:
-                (session/name).write_text(''.join(json.dumps(row)+'\n' for row in rows))
-            (root/'run_config.json').write_text(json.dumps({'official':False}))
-            (session/'metrics.json').write_text(json.dumps({'run_status':'completed',
-                'evaluation_valid':True,'task_results':[result]}))
-            saved={p:p.read_bytes() for p in root.rglob('*') if p.is_file()}
-            original=analyze_run(root)
-            self.assertEqual(original['issues'],[])
-            self.assertEqual(original['summary']['formal_rule_average'],0)
-            self.assertEqual(original['tasks'][0]['metric_version'],LEGACY_METRIC_VERSION)
-            current=analyze_run(root,rescore=True)
-            self.assertEqual(current['issues'],[])
-            self.assertEqual(current['summary']['formal_rule_average'],100)
-            self.assertEqual(current['tasks'][0]['original_task_score'],0)
-            self.assertFalse(current['tasks'][0]['success'])
-            for file,data in saved.items():
-                self.assertEqual(file.read_bytes(),data)
 
     def test_historical_timing_reports_spans_without_inventing_components(self):
         from roboodyssey.evaluation.rescore import historical_measurements
@@ -287,8 +223,7 @@ class ReproducibilityTests(unittest.TestCase):
         from roboodyssey.evaluation.task_diagnostics import analyze_run
         from roboodyssey.reporting.task_diagnostics_report import write_diagnostics
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp)/'run';session=root/'scenes/s/sessions/session_000'
-            session.mkdir(parents=True)
+            root=Path(tmp)/'run';session = result_session(root)
             gt=truth(15.5);actions=trajectory(5.5,10.5)
             actions[0]['task_id']='t';actions[0]['result']['collision']=False
             before={'robot_pose':pose(5.5),'objects':{}}
@@ -311,7 +246,7 @@ class ReproducibilityTests(unittest.TestCase):
                 'metric_reference':reference,'repair':{'status':'ready','public_task':public,
                 'runtime_ground_truth':gt,'repair_record':{'changed':True}}}
             def save(name,rows):
-                (session/name).write_text(''.join(json.dumps(row)+'\n' for row in rows))
+                session_file(session, name).write_text(''.join(json.dumps(row)+'\n' for row in rows))
             (root/'run_config.json').write_text(json.dumps({'official':False}))
             save('runtime_tasks.jsonl',[task]);save('action_changelog.jsonl',actions)
             save('request_outcomes.jsonl',[result]);save('agent_io.jsonl',[
@@ -335,16 +270,16 @@ class ReproducibilityTests(unittest.TestCase):
             report=analyze_run(root)
             self.assertIsNone(report['summary']['formal_rule_average'])
             self.assertFalse(report['summary']['task_score_evidence_valid'])
-            # Explicit rescoring of a legacy run must never fall back to its
+            # Explicit rescoring without a reference must never fall back to its
             # original binary score when a path reference is unavailable.
             result.pop('evaluation');result.pop('task_timing');task.pop('metric_reference')
             save('request_outcomes.jsonl',[result]);save('runtime_tasks.jsonl',[task])
             (session/'metrics.json').write_text(json.dumps({'run_status':'completed',
                 'evaluation_valid':True,'task_results':[result]}))
-            self.assertEqual(analyze_run(root)['summary']['formal_rule_average'],0)
+            self.assertIsNone(analyze_run(root)['summary']['formal_rule_average'])
             report=analyze_run(root,rescore=True)
             self.assertIsNone(report['summary']['formal_rule_average'])
-            self.assertEqual(report['tasks'][0]['original_task_score'],0)
+            self.assertIsNone(report['tasks'][0]['original_task_score'])
             self.assertEqual(report['tasks'][0]['metric_version'],METRIC_VERSION)
 
     def test_sequence_aggregation_does_not_mix_metric_versions_or_hide_missing_scores(self):
@@ -359,8 +294,8 @@ class ReproducibilityTests(unittest.TestCase):
         self.assertIsNone(aggregate_runs([good,incomplete])['score_100'])
         incomplete['summary'].update(metrics_complete=True,tasks_evaluated=1)
         self.assertIsNone(aggregate_runs([good,incomplete])['score_100'])
-        legacy=deepcopy(good);legacy['summary']['metric_version']='binary_success_v1'
-        self.assertIsNone(aggregate_runs([good,legacy])['score_100'])
+        unsupported=deepcopy(good);unsupported['summary']['metric_version']='unknown_metric'
+        self.assertIsNone(aggregate_runs([good,unsupported])['score_100'])
         empty=deepcopy(good);empty['summary'].update(task_score=None,task_success_rate=None,tasks_evaluated=0)
         self.assertEqual(aggregate_runs([good,empty])['score_100'],40)
 

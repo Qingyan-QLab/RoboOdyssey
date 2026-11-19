@@ -61,9 +61,10 @@ def aggregate_runs(records):
     scores = [r.get('summary', {}).get('task_score') for r in records]
     # Zero-denominator sequences remain visible but contribute no numeric score.
     numeric = [score for score in scores if type(score) in (int,float) and math.isfinite(score) and 0 <= score <= 1]
-    versions={r.get('summary',{}).get('metric_version','binary_success_v1') for r in records}
-    metrics_complete = len(versions) == 1 and all(
-        r.get('summary',{}).get('metrics_complete',True)
+    from ..evaluation.task_metrics import METRIC_VERSION
+    versions={r.get('summary',{}).get('metric_version') for r in records}
+    metrics_complete = versions == {METRIC_VERSION} and all(
+        r.get('summary',{}).get('metrics_complete',False)
         and ((type(score) in (int,float) and math.isfinite(score) and 0 <= score <= 1)
              or (score is None and r.get('summary',{}).get('tasks_evaluated') == 0))
         for r,score in zip(records,scores))

@@ -1,3 +1,5 @@
+from tests.frozen_data import result_session
+from roboodyssey.artifacts.layout import session_file
 """CPU tests against explicit grasp, attachment, placement and obstacle states."""
 from copy import deepcopy
 import json
@@ -295,8 +297,7 @@ class TransferCostTests(unittest.TestCase):
             ('move_forward', {'x': 11.5}), ('pick', {}))
         outcome = evaluate_request(gt, after, [], actions, [], None)
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)/'run'; session = root/'scenes/s/sessions/session_000'
-            session.mkdir(parents=True)
+            root = Path(tmp)/'run'; session = result_session(root)
             reference, grid = prepare_reference(SimpleNamespace(evaluation_transfer=lambda goals: snapshot), gt, session)
             result = {'task_id': 't', 'scored': True, 'dispatched': True, 'success': False,
                 'agent_status': 'ok', 'reason_code': 'agent_done', 'steps': len(actions),
@@ -311,7 +312,7 @@ class TransferCostTests(unittest.TestCase):
                 'request_outcomes.jsonl': [result], 'agent_io.jsonl': [
                     {'direction': 'request', 'request_type': 'step', 'task_id': 't', 'payload': public}]}
             for name, records in rows.items():
-                (session/name).write_text(''.join(json.dumps(row)+'\n' for row in records))
+                session_file(session, name).write_text(''.join(json.dumps(row)+'\n' for row in records))
             (root/'run_config.json').write_text(json.dumps({'official': False}))
             (session/'metrics.json').write_text(json.dumps({'run_status': 'completed',
                 'evaluation_valid': True, 'task_results': [result]}))
@@ -358,7 +359,7 @@ class TransferCostTests(unittest.TestCase):
                 avatar._pickable = {'book_red','cup_blue'}; avatar._floor_height = 0
                 avatar._resolution = .1; avatar._origin = np.asarray(grid['origin_xy'])
                 avatar._room_labels = np.asarray(grid['room_labels']); avatar._room_ids = grid['room_ids']
-                avatar.runtime_state_v5 = self.runtime_state
+                avatar.runtime_state_v5 = self.runtime_state_v5
                 avatar.evaluation_navigation = self.evaluation_navigation
             def raster(self):
                 return derive_navigation(rooms, list(self.state['objects'].values()), resolution=.1,
@@ -376,7 +377,7 @@ class TransferCostTests(unittest.TestCase):
         class Walker(Agent):
             def request(self, payload, on_wait=None):
                 self.requests.append(deepcopy(payload))
-                return {} if payload['type']=='session_start' else {'action':'move_backward','done':True}
+                return {'sequence_reset_ack':payload['sequence_context']['run_id']} if payload['type']=='session_start' else {'action':'move_backward','done':True}
         with tempfile.TemporaryDirectory() as tmp:
             archive, output = Path(tmp)/'archive', Path(tmp)/'run'
             write_dataset(archive, select_scenario(compiler,plan), compiler, inputs)

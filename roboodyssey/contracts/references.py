@@ -68,7 +68,6 @@ def same_location(current, initial):
 
     USD readback may provide an AABB without the cached transform matrix. Small
     float round-off is not a changed landmark; meaningful movement still is.
-    This v5 comparison does not alter legacy archive/runtime contracts.
     """
     if any(current.get(k) != initial.get(k) for k in ("room_id", "support_object_id")):
         return False
@@ -232,7 +231,7 @@ def object_reference(cache, state, oid, *, hides_room=False, preferred=None):
         if binding:
             valid = _metadata_reference_holds(oid, binding, context)
         else:
-            # Unstructured legacy claims are valid only in the same comparison
+            # Descriptive claims are valid only in the same comparison
             # set and context. Never carry an initial spatial phrase across moves.
             dependencies = set(peers)
             if expression["spatial"]:

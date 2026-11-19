@@ -6,7 +6,7 @@ from typing import Any
 PROTOCOL_VERSION = "1.1"
 OBSERVATION_STREAM = {'fps': 2.0, 'mode': 'push'}
 OBSERVATION_SEND_TIMEOUT = 0.5
-REQUEST_TYPES = frozenset({"session_start", "step", "qa"})
+REQUEST_TYPES = frozenset({"session_start", "step"})
 ACTION_TYPES = frozenset({
     "no_op", "move_forward", "move_backward", "move_left", "move_right",
     "turn_left", "turn_right",
@@ -40,18 +40,14 @@ def validate_response(request_type: str, response: Any) -> dict[str, Any]:
         raise ValueError("memory_update must be an object")
     if "done" in response and not isinstance(response["done"], bool):
         raise ValueError("done must be a boolean")
-    if request_type == "step" or (request_type == 'qa' and 'action' in response):
+    if request_type == "step":
         action = response.get("action")
         name = action if isinstance(action, str) else action.get("action") if isinstance(action, dict) else None
         if name not in ACTION_TYPES:
             raise ValueError(f"unknown action: {name!r}")
-        if request_type == 'qa' and name in {'pick', 'place', 'open', 'close'}:
-            raise ValueError('inspection QA only allows navigation, look, reset and no_op')
         if isinstance(action, dict):
             if "distance" in action and not isinstance(action["distance"], (int, float)):
                 raise ValueError("action distance must be numeric")
             if "angle_degrees" in action and not isinstance(action["angle_degrees"], (int, float)):
                 raise ValueError("action angle_degrees must be numeric")
-    elif request_type == "qa" and "answer" not in response and "prediction" not in response:
-        raise ValueError("qa response requires 'answer' or 'prediction'")
     return response

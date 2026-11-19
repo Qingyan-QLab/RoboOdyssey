@@ -1,3 +1,4 @@
+from roboodyssey.artifacts.layout import session_file
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -19,7 +20,7 @@ class Env:
         self.state=deepcopy(state);self.state['held_object']=None
         self.pose={'position':[1.1,1.1,0]};self.visible=visible;self.observation_frame_id=0
         self.closed=False
-    def runtime_state(self):return deepcopy(self.state)
+    def runtime_state_v5(self):return deepcopy(self.state)
     def get_agent_pose(self):return deepcopy(self.pose)
     def set_task(self,t):self.task=t
     def observe(self):return {'images':{}}
@@ -36,7 +37,9 @@ class Agent:
     def send_observation(self,payload):self.requests.append(deepcopy(payload))
     def request(self,payload,on_wait=None):
         self.requests.append(deepcopy(payload))
-        if payload['type']=='session_start':return {}
+        if payload['type']=='session_start':
+            context=payload.get('sequence_context',{})
+            return {'sequence_reset_ack':context['run_id']} if context.get('reset_memory') else {}
         return {'action':'no_op','answer':'study','done':True}
 
 
@@ -57,7 +60,7 @@ class RequestRunnerTests(unittest.TestCase):
         class Walker(Agent):
             def request(self,payload,on_wait=None):
                 self.requests.append(deepcopy(payload))
-                return {} if payload['type']=='session_start' else {'action':'move_forward','done':True}
+                return {'sequence_reset_ack':payload['sequence_context']['run_id']} if payload['type']=='session_start' else {'action':'move_forward','done':True}
         with tempfile.TemporaryDirectory() as tmp:
             archive,output=Path(tmp)/'archive',Path(tmp)/'run'
             write_dataset(archive,compiled,c,i);ds=BenchmarkDataset(archive)
@@ -80,10 +83,12 @@ class RequestRunnerTests(unittest.TestCase):
             from roboodyssey.contracts.doors import POLICY
             from roboodyssey.contracts.raster import derive_navigation
             setup={'policy':POLICY,'doors':[]}
-            manifest=json.loads((archive/'dataset_manifest.json').read_text())
-            metadata=json.loads((archive/manifest['scene_metainfo']).read_text())
-            cache=json.loads((archive/manifest['runtime_scene_cache']).read_text())
-            nav_path=archive/manifest['navigation']
+            frozen = ds._requests
+            sequence_root = ds.root
+            manifest=json.loads((sequence_root/'dataset_manifest.json').read_text())
+            metadata=json.loads(frozen.path('scene_metainfo').read_text())
+            cache=json.loads(frozen.path('runtime_scene_cache').read_text())
+            nav_path=frozen.path('navigation')
             with np.load(nav_path,allow_pickle=False) as nav:
                 resolution=float(nav['resolution']);radius=float(nav['robot_radius'])
             objects=[{**o,**cache['objects'][o['object_id']]['initial']} for o in metadata['objects']]
@@ -91,20 +96,36 @@ class RequestRunnerTests(unittest.TestCase):
                 resolution=resolution,robot_radius=radius,environment_setup=setup)
             nav.pop('environment_setup');nav['environment_setup_json']=json.dumps(setup)
             np.savez_compressed(nav_path,**{k:v for k,v in nav.items() if v is not None})
-            setup_path=archive/'private/scene/environment_setup.json'
+            setup_path=frozen.path('environment_setup')
             setup_path.write_text(json.dumps(setup))
-            manifest['environment_setup']=setup_path.relative_to(archive).as_posix()
-            for file in (nav_path,setup_path):manifest['files'][file.relative_to(archive).as_posix()]=sha256_file(file)
-            (archive/'dataset_manifest.json').write_text(json.dumps(manifest))
-            config={'official':False,'dataset_manifest_sha256':sha256_file(archive/'dataset_manifest.json'),
-                'motion':{'robot_radius_m':radius}}
+            revision=frozen.version
+            version_manifest=revision.manifest
+            for file in (nav_path,setup_path):
+                version_manifest['files'][file.relative_to(revision.directory).as_posix()]=sha256_file(file)
+            version_path=revision.directory/'scene_version.json'
+            version_path.write_text(json.dumps(version_manifest))
+            reference={'revision':revision.revision,'manifest_sha256':sha256_file(version_path)}
+            manifest['scene_reference']=reference
+            plan_path=frozen.path('plan')
+            plan=json.loads(plan_path.read_text());plan['scene_reference']=reference
+            plan_path.write_text(json.dumps(plan))
+            manifest['files'][plan_path.relative_to(sequence_root).as_posix()]=sha256_file(plan_path)
+            manifest_path=sequence_root/'dataset_manifest.json'
+            manifest_path.write_text(json.dumps(manifest))
+            index_path=archive/'scene_manifest.json'
+            index=json.loads(index_path.read_text())
+            index['versions'][revision.revision]['sha256']=reference['manifest_sha256']
+            index['sequences'][manifest['sequence_id']]['sha256']=sha256_file(manifest_path)
+            index_path.write_text(json.dumps(index))
+            config={'official':False,'dataset_manifest_sha256':sha256_file(manifest_path),
+                'sequence_identity':ds.sequence_identity(),'motion':{'robot_radius_m':radius}}
             (output/'run_config.json').write_text(json.dumps(config))
-            session=next(output.glob('scenes/*/sessions/*'))
+            session=next(output.glob('sequences/*/sessions/*'))
             for name in ('runtime_tasks.jsonl','request_outcomes.jsonl'):
-                rows=[json.loads(l) for l in (session/name).read_text().splitlines()]
+                rows=[json.loads(l) for l in session_file(session, name).read_text().splitlines()]
                 for row in rows:
                     row.pop('evaluation',None);row.pop('metric_reference',None);row.pop('task_timing',None)
-                (session/name).write_text(''.join(json.dumps(row)+'\n' for row in rows))
+                session_file(session, name).write_text(''.join(json.dumps(row)+'\n' for row in rows))
             metrics=json.loads((session/'metrics.json').read_text())
             for row in metrics['task_results']:row.pop('evaluation',None);row.pop('task_timing',None)
             (session/'metrics.json').write_text(json.dumps(metrics))
@@ -112,7 +133,7 @@ class RequestRunnerTests(unittest.TestCase):
             rescored=analyze_run(output,rescore=True,reference_dataset=archive,reference_output=Path(tmp)/'rescored')
             self.assertEqual(rescored['issues'],[])
             self.assertGreater(rescored['summary']['formal_rule_average'],0)
-            self.assertEqual(rescored['tasks'][0]['original_task_score'],0)
+            self.assertIsNone(rescored['tasks'][0]['original_task_score'])
             self.assertTrue(rescored['reference_reconstruction']['baseline_grid_exact_match'])
             self.assertFalse(rescored['reference_reconstruction']['original_live_snapshot'])
             for file,content in sources.items():self.assertEqual(file.read_bytes(),content)
@@ -137,7 +158,7 @@ class RequestRunnerTests(unittest.TestCase):
                 def request(self, payload, on_wait=None):
                     self.requests.append(deepcopy(payload))
                     if payload['type'] == 'session_start':
-                        return {}
+                        return {'sequence_reset_ack':payload['sequence_context']['run_id']}
                     env.visible = True
                     for _ in range(2):
                         timer.sleep(.5)
@@ -166,7 +187,7 @@ class RequestRunnerTests(unittest.TestCase):
         class UnsupportedAgent(Agent):
             def request(self,payload,on_wait=None):
                 self.requests.append(deepcopy(payload))
-                if payload['type']=='session_start':return {}
+                if payload['type']=='session_start':return {'sequence_reset_ack':payload['sequence_context']['run_id']}
                 return {'agent_status':'unsupported','reason_code':'unsupported_capability','done':True}
         with tempfile.TemporaryDirectory() as tmp:
             archive=Path(tmp)/'archive';output=Path(tmp)/'run';write_dataset(archive,result,c,i)
@@ -201,7 +222,7 @@ class RequestRunnerTests(unittest.TestCase):
         class EarlyAgent(Agent):
             def request(self,payload,on_wait=None):
                 self.requests.append(deepcopy(payload))
-                if payload['type']=='session_start':return {}
+                if payload['type']=='session_start':return {'sequence_reset_ack':payload['sequence_context']['run_id']}
                 return {'action':'no_op','answer':'study'} if len(self.requests)==2 else {'action':'no_op','done':True}
         class LateVisibility(Env):
             def observe_with_evidence(self,requirements):
@@ -247,7 +268,7 @@ class RequestRunnerTests(unittest.TestCase):
                 serialized=json.dumps(payload)
                 for private in ('book_red','inspection_contract','ground_truth','template_id','visible_pixels'):
                     self.assertNotIn(private,serialized)
-            events=[json.loads(s) for s in (output/'scenes/synthetic_demo/sessions/session_000/runtime_history.jsonl').read_text().splitlines()]
+            events=[json.loads(s) for s in (output/'sequences/seq_fixture/sessions/session_000/traces/runtime_history.jsonl').read_text().splitlines()]
             self.assertFalse(events[0]['success']);self.assertTrue(events[0]['dispatched'])
 
     def test_correct_answer_scores_with_or_without_visibility(self):
@@ -278,10 +299,9 @@ class RequestRunnerTests(unittest.TestCase):
         evidence=[{'object_id':'book_red','frame_id':4,'current_frame':True,'visible_pixels':20,'distance_m':.1}]
         expected=truth['goals'][0]['expected_outcome']['answer']
         answer='yes' if expected else 'no'
-        self.assertTrue(evaluate_request(truth,state,[],[],evidence,answer,start_frame=3)['success'])
-        self.assertTrue(evaluate_request(truth,state,[],[],evidence,answer,start_frame=4)['success'])
-        self.assertFalse(evaluate_request(truth,state,[],[],evidence,answer,start_frame=4,answer_only=False)['success'])
-        self.assertFalse(evaluate_request(truth,state,[],[],evidence,'yes and no',start_frame=3)['success'])
+        self.assertTrue(evaluate_request(truth,state,[],[],evidence,answer)['success'])
+        self.assertTrue(evaluate_request(truth,state,[],[],evidence,answer)['success'])
+        self.assertFalse(evaluate_request(truth,state,[],[],evidence,'yes and no')['success'])
         c,i,p=fixture_v3([task('nav',goal('book_red'),goal('cabinet_dark'))]);truth=select_scenario(c,p)['sessions'][0]['ground_truth'][0]
         poses=[{'position':[.6,2.6,0]},{'position':[1.1,1.1,0]}]
         self.assertFalse(evaluate_request(truth,state,poses,[],[],None)['success'])

@@ -82,7 +82,7 @@ def write_diagnostics(report, output):
             'runtime_gt': json.dumps(row['runtime_gt'], ensure_ascii=False),
             'success_conditions': '；'.join(row['success_conditions']),
             'goal_results': json.dumps(row['goal_results'], ensure_ascii=False),
-            'score_max':100,'metric_version':row.get('metric_version','binary_success_v1'),
+            'score_max':100,'metric_version':row.get('metric_version','unavailable'),
             'completion_score':row.get('completion_score'),
             'original_task_score':row.get('original_task_score'),
             'original_metric_version':row.get('original_metric_version'),
@@ -125,22 +125,22 @@ def write_diagnostics(report, output):
     prose = (
         f"共 {summary['tasks_total']} 个任务：成功 {summary['successes']}，失败 {summary['failures']}，排除 {summary['tasks_excluded']}。"
         f"任务平均分 {fmt(summary['formal_rule_average'])}/100，分母 {summary['tasks_evaluated']}；"
-        f"评分版本 {', '.join(summary.get('metric_versions', ['binary_success_v1']))}。"
-        f"原运行 official={report['original_run_official']}，完成状态={str((report.get('original_completion') or {}).get('status', '未提供'))}。")
+        f"评分版本 {', '.join(summary.get('metric_versions', ['unavailable']))}。"
+        f"原运行 official={report['original_run_official']}，完成状态={str((report.get('original_status') or {}).get('execution', '未提供'))}。")
     caveat = ('本报告是现有日志的离线复核，不将原运行重新认证为官方运行。原始 GT、请求和结果均保留；'
               '已排除任务为 N/A，问答／搬运不支持为 0。导航分仅适用于 visit／establish_place／revisit_place，'
               '带 navigation 能力标签的问答不套用导航到达评分。')
     if report.get('rescored'):
-        caveat += ' 本报告已按新版规则显式重算，原任务分另存 original_task_score；原运行的观测频率、任务文本及实际成功结果均保留。'
+        caveat += ' 本报告已按 progress_path_v3 显式复算，原任务分另存 original_task_score；原运行的观测频率、任务文本及实际成功结果均保留。'
     if report.get('reference_reconstruction'):
         caveat += ' 路径参考地图由哈希验证的数据归档和每任务真实状态离线重建，基准网格逐格一致；它不是当时保存的实时地图快照。'
     methods = [
-        '评分版本以每条记录为准：progress_path_v3 的导航按有序进度×路径效率计 0–100 分；搬运按剩余交付成本进展×成本效率计分。历史 progress_path_v1/v2 与 binary_success_v1 保持原规则；不同版本不混合平均。明确排除项为 N/A。',
-        ('本次路径参考来自验证归档及真实状态的离线重建；' if report.get('reference_reconstruction') else '新路径参考来自任务开始时保存的碰撞网格；')+'以 8 邻域带权最短路计算，不穿对角墙角，目标为运行时 GT 合格区域。它是网格近似，不是 Isaac navmesh。',
+        '评分版本以每条记录为准：progress_path_v3 的导航按有序进度×路径效率计 0–100 分；搬运按剩余交付成本进展×成本效率计分。缺失评分证据保持 N/A。明确排除项为 N/A。',
+        ('本次路径参考来自验证归档及真实状态的离线重建；' if report.get('reference_reconstruction') else '路径参考来自任务开始时保存的碰撞网格；')+'以 8 邻域带权最短路计算，不穿对角墙角，目标为运行时 GT 合格区域。它是网格近似，不是 Isaac navmesh。',
         '路径效率=D0/max(D0,已计费路径+剩余有序路线)，任务导航分=有序进度×路径效率。reset 按端点网格距离、实际位移和一格长度的最大值计费，不免费传送。',
         'progress_path_v3 搬运：P=clip(1-J剩余/J初始,0,1)，E=J初始/max(J初始,C已付+J剩余)，得分=100×P×E。移动距离按标准移动步长换算，每次抓取/放置尝试计 1，reset 按等效路径换算；转向和等待不额外计费。最终状态决定剩余工作，放错或掉落会重新计入恢复成本。',
         '搬运参考保存真实对象原点、可移除占据、房间标签、地面、抓取半径和放置偏移；放置方向使用 72 个等间隔朝向的网格近似，当前姿态额外检查真实朝向。缺少参考或证据时分数为 N/A，任务保留在分母。',
-        'v3/v2 问答仅按答案正确性计 100／0，没有观察或动作过程分。历史 v2 搬运按完整交付计 100／0；v1 保留搬运三阶段等权和观察问答两阶段计分。重算保留原成功标志，可能与新版任务分不同。',
+        '问答仅按答案正确性计 100／0，没有观察或动作过程分。离线复算保留日志中记录的完整成功标志。',
         '步骤与真实耗时单独显示。没有已验证的 GT 参考步数／耗时时，效率比值为 N/A；2 FPS 不等于每个动作固定 0.5 秒。',
         'd 为机器人 XY 点到运行时目标包围盒的距离；r=max(d−达标容差,0)。单目标进度=100×clip(1−r/r起点,0,1)。起点已在范围内时，在范围内为 100，否则为 0。',
         '多目标进度=100×(按序已完成数＋当前目标进度)/目标数。每段起点取前一个目标实际到达位置；同一到达样本不计下一个目标。最佳分是整条有序进度曲线的最大值。',
@@ -163,7 +163,7 @@ def write_diagnostics(report, output):
         detail('逐 Session 分数、网格指标及时间测量', {k:summary.get(k) for k in ('by_session','navigation_metric','recorded_timing')}),
         '<p><a href="tasks.csv">任务 CSV</a> · <a href="sessions.csv">Session CSV</a> · <a href="navigation_goals.csv">目标距离 CSV</a> · <a href="transfer_goals.csv">搬运成本 CSV</a> · <a href="resets.csv">逐次 reset CSV</a> · <a href="scores.json">完整 JSON 与来源哈希</a></p>',
         '<details><summary>计算口径</summary><ul>'+''.join('<li>'+esc(m)+'</li>' for m in methods)+'</ul></details>',
-        detail('汇总、分类与恢复统计', summary), detail('原运行完成状态', report.get('original_completion')),
+        detail('汇总、分类与恢复统计', summary), detail('原运行完成状态', report.get('original_status')),
         detail('证据问题（空列表表示本次复核无差异）', report['issues']),
         '<h2>问题归类（标签可重叠）</h2>',
         table(['类别', '全部导航任务', '失败导航任务'], [[esc(k), str(v), str(summary['failed_navigation_categories'].get(k, 0))] for k, v in summary['categories'].items()]),
@@ -179,7 +179,7 @@ def write_diagnostics(report, output):
         status = 'excluded' if row['excluded'] else 'success' if row['success'] else 'failure'
         cells = [f'{row["order"]} · <a href="#{esc(ref(row))}">{esc(row["session_id"]+"/"+row["task_id"])}</a><br>'+esc(' → '.join(row['target_names']))+'<br>'+esc(' / '.join(row['goal_kinds'])),
             esc(('排除' if row['excluded'] else '成功' if row['success'] else '失败')+' / '+row['reason_code']),
-            '<b>'+fmt(row['formal_task_score'])+'</b><br>'+esc(row.get('metric_version','binary_success_v1')),
+            '<b>'+fmt(row['formal_task_score'])+'</b><br>'+esc(row.get('metric_version','unavailable')),
             fmt(nav.get('final_progress_score')), fmt(nav.get('best_progress_score')),
             fmt(path_metric.get('progress_score')),pct(path_metric.get('path_efficiency')),
             str(row['steps']),fmt(evaluation.get('measurements',{}).get('elapsed_seconds',evaluation.get('measurements',{}).get('recorded_task_span_seconds'))),
@@ -241,7 +241,7 @@ def write_diagnostics(report, output):
 
 
 def write_task_scores(root, output, *, near_margin_m=.5, rescore=False, reference_dataset=None):
-    """Compute and render diagnostics once for both unified and legacy commands."""
+    """Compute and render task scores and evidence diagnostics."""
     from ..evaluation.task_diagnostics import analyze_run
     output = Path(output)
     if output.exists():
