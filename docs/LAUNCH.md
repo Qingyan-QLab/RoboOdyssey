@@ -12,7 +12,7 @@
 | `experiment --config <json>` | 同预检 | 否 |
 | `experiment --config <json> --execute` | 管理模型与 Isaac、记录状态、自动分析和清理 | 是 |
 | `run --dataset ... --agent-cmd ...` | 用 Isaac Python 执行通用 Agent | 是 |
-| `analyze <run> --output <新目录>` | 旧／新结果的统一离线分析 | 否 |
+| `analyze <run> --output <新目录>` | 运行与实验结果的离线分析 | 否 |
 | `check` | 独立完整 CPU 回归；禁止 Builder／模型／仿真导入 | 否 |
 | `check --core` | 快速基础测试子集 | 否 |
 
@@ -31,7 +31,7 @@ checkpoint 可是权重文件或模型目录，动作统计按 SimpleNav ActionC
 通用字段包括 max_steps、agent_timeout（默认预算及含义见 [执行规则](RULES.md#execution)）、history_frames（8）、
 collision_reset_threshold（5，0 为关闭）、url、gpu、viewer、record_video、video_layout、
 video_fps、video_event_seconds、ffmpeg、auto_analyze（true）。
-`sequences` 是不重复的序列 ID 列表，与 `all_sequences` 互斥；无身份的旧独立归档也可运行。
+`sequences` 是不重复的序列 ID 列表，与 `all_sequences` 互斥。
 场景集合中只有一条序列时可省略选择，多条时必须明确选择。
 
 `environment` 设置 Isaac／Agent 子进程环境，可指定 DISPLAY、XAUTHORITY 等。
@@ -80,20 +80,9 @@ external 不启动或停止模型，仅在显式执行时检查连接；不会�
 - `preflight --config ...`：CPU 检查；不启动服务。
 - `experiment --config ... --execute`：管理实验。已有模型服务使用 `model_service.mode=external`。
 - `run --dataset ...`／`run_benchmark.sh --dataset ...`：通用 Agent 执行；Bash 入口还负责 Isaac / ROS 环境。
-- `analyze <run> --output <新目录>`：自动按契约生成修补、评分或旧版报告；日志保持只读。
+- `analyze <run> --output <新目录>`：生成请求修补、评分诊断与报告索引；日志保持只读。
 - `scripts/run_holoagent.sh --dataset ...`：HoloAgent 服务组合；启动模型前先做 CPU 数据预览。
 - `scripts/check_request_evidence.py` 和 `scripts/run_request_diagnostics.py`：真实取证／受控失败诊断；后者 `--prepare-only` 为 CPU，见 [SimpleNav 专题](SIMPLENAV_V5.md)。
-- `scripts/check_runtime_tasks.py`：旧 schema 4 归档的合成状态重放，见 [旧运行时规则](RULES.md#legacy)。
 
 真实运行的最小测试直接复用 `run --dataset ... --max-steps 20`，选择范围遵守执行规则。
 普通 `analyze` 也可分析这些诊断结果。
-旧 schema 4 合成重放从本项目根目录运行：
-
-```bash
-python scripts/check_runtime_tasks.py /path/to/legacy-archive --output /path/to/new-report
-```
-
-不指定 output 时写入 `outputs/runtime_repair_validation/<归档目录名>/`。
-它重放正常状态、首次搬运失败和拿起后失败，源归档保持只读。
-
-历史结果中的 supervisor、本机配置与旧命令记录只作证据保留。

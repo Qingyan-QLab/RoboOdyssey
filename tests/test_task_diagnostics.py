@@ -1,4 +1,5 @@
-from copy import deepcopy
+from tests.frozen_data import result_session
+from benchmark.artifacts.layout import session_file
 import csv
 import json
 from pathlib import Path
@@ -120,6 +121,8 @@ class NavigationDiagnosticsTests(unittest.TestCase):
 class TaskScoreReportTests(unittest.TestCase):
     def test_excluded_na_and_unsupported_zero(self):
         unsupported = {**outcome(None), 'agent_status': 'unsupported'}
+        self.assertIsNone(task_score(unsupported))
+        unsupported['evaluation']={'version':'progress_path_v3','score_max':100,'score':0}
         self.assertEqual(task_score(unsupported), 0)
         for reason in ('already_satisfied', 'unavailable'):
             self.assertIsNone(task_score({'scored': False, 'dispatched': False, 'reason_code': reason, 'failure_causes': [{'task_id': 'source'}]}))
@@ -128,15 +131,23 @@ class TaskScoreReportTests(unittest.TestCase):
 
     def test_report_uses_recorded_runtime_gt_and_preserves_source_files(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)/'run'; session = root/'scenes/s/sessions/session_000'; session.mkdir(parents=True)
+            root = Path(tmp)/'run'; session = result_session(root)
             runtime = truth_at(10); original = truth_at(100); original['state_assumption'] = 'planned_success_assumption'
             public = {'task_id': 't', 'instruction': '<script>alert(1)</script>', 'issued_at': '2026-11-12'}
             result = outcome(1, success=True, steps=1)
             task = {'original': public, 'original_ground_truth': original,
                     'state_before': {'robot_pose': pose(0)}, 'repair': {'status': 'ready', 'public_task': public,
                     'runtime_ground_truth': runtime, 'repair_record': {'changed': True}}}
+            import numpy as np
+            from types import SimpleNamespace
+            from benchmark.evaluation.task_metrics import prepare_reference, evaluate_metrics
+            reference, grid = prepare_reference(SimpleNamespace(evaluation_navigation=lambda: {
+                'blocked': np.zeros((5,30),bool), 'origin':[-1,-1], 'resolution':1, 'radius':0}), runtime, session)
+            task['metric_reference']=reference
+            result['evaluation']=evaluate_metrics(runtime, task['state_before'], {'robot_pose':pose(9)},
+                [pose(0),pose(9)], [action(0,0,9)], result, reference=reference, grid=grid)
             def lines(name, rows):
-                (session/name).write_text(''.join(json.dumps(r)+'\n' for r in rows))
+                session_file(session, name).write_text(''.join(json.dumps(r)+'\n' for r in rows))
             (root/'run_config.json').write_text(json.dumps({'official': False}))
             lines('runtime_tasks.jsonl', [task]); lines('request_outcomes.jsonl', [result])
             lines('action_changelog.jsonl', [action(0, 0, 9)])
@@ -152,10 +163,10 @@ class TaskScoreReportTests(unittest.TestCase):
             self.assertNotIn('<script>alert(1)', page)
             self.assertIn('&lt;script&gt;alert(1)', page)
             with (out/'tasks.csv').open(encoding='utf-8-sig') as f:
-                row = next(csv.DictReader(f)); self.assertEqual(row['formal_task_score'], '100')
+                row = next(csv.DictReader(f)); self.assertEqual(float(row['formal_task_score']), 100)
             # Missing action evidence is exposed and never silently scored as a
             # zero-length, collision-free trajectory.
-            (session/'action_changelog.jsonl').unlink()
+            (session_file(session, 'action_changelog.jsonl')).unlink()
             report = analyze_run(root)
             self.assertIsNone(report['tasks'][0]['navigation'])
             self.assertEqual(report['issues'][0]['scope'], 'navigation')

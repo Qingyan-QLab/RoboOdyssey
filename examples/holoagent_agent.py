@@ -5,7 +5,7 @@ HoloAgent is a framework, not a single checkpoint.  This process keeps the
 benchmark's stdin/stdout JSONL contract and delegates planning/execution to a
 small HTTP gateway exposed by AgentOS, an FSR-VLN service, or a test stub.
 
-The gateway receives ``{"protocol_version": "1.0", "request": ...}`` and
+The gateway receives ``{"protocol_version": "1.1", "request": ...}`` and
 returns either a protocol response directly or ``{"response": {...}}``.  A
 response may contain a normal benchmark ``action`` or a gateway-normalized
 ``relative_nav`` object with ``forward``, ``left`` and ``rotation`` fields.
@@ -24,13 +24,9 @@ from urllib import error, request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from benchmark.agents.stream import serve
+from benchmark.agents.protocol import ACTION_TYPES, PROTOCOL_VERSION
 
 
-ACTION_NAMES = {
-    "no_op", "move_forward", "move_backward", "move_left", "move_right",
-    "turn_left", "turn_right", "look_up", "look_down", "pick", "place",
-    "open", "close", "reset",
-}
 
 _ACTION_ALIASES = {
     "forward": "move_forward", "backward": "move_backward",
@@ -101,11 +97,11 @@ def normalize_response(value: dict[str, Any]) -> dict[str, Any]:
         if isinstance(arguments, dict):
             for key, item in arguments.items():
                 action.setdefault(key, item)
-        if action["action"] in {"pick", "open", "close"} and not action.get("object_id"):
-            action["object_id"] = action.get("target") or action.get("object")
-        if action["action"] == "place" and not action.get("room_id"):
-            action["room_id"] = action.get("location") or action.get("target")
-    if not isinstance(action, dict) or action.get("action") not in ACTION_NAMES:
+        if action.get('object_id') or action.get('room_id'):
+            raise RuntimeError('HoloAgent actions must use introduced public names in target')
+        if action['action'] in {'pick', 'open', 'close'} and not action.get('target'):
+            action['target'] = action.pop('object', None)
+    if not isinstance(action, dict) or action.get("action") not in ACTION_TYPES:
         raise RuntimeError(f"HoloAgent returned unsupported action: {action!r}")
     response["action"] = action
     response.setdefault("done", False)
@@ -129,7 +125,7 @@ class HoloAgentAdapter:
         if not self.endpoint:
             raise RuntimeError("set --endpoint or HOLOAGENT_ENDPOINT, or use --dry-run")
         response = _post_json(self.endpoint, {
-            "protocol_version": "1.0", "source": "longterm_benchmark",
+            "protocol_version": PROTOCOL_VERSION, "source": "longterm_benchmark",
             "request": payload,
         }, self.timeout)
         return normalize_response(response) if payload.get("type") == "step" else response

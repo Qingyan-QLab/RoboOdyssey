@@ -8,17 +8,9 @@ from benchmark.contracts.contextual import distance_to_box, RuntimeContractError
 from benchmark.contracts.state import geometry
 
 
-def observed(goal, evidence, start_frame):
-    contract=goal.get('inspection_contract')
-    if not contract: return True
-    return any(e.get('object_id')==contract['object_id'] and type(e.get('frame_id')) is int
-               and e['frame_id']>start_frame and e.get('current_frame') is True
-               and e.get('visible_pixels',0)>=contract['min_visible_pixels']
-               and e.get('distance_m',float('inf'))<=contract['max_distance_m']
-               for e in evidence)
 
 
-def evaluate_request(truth, state, poses, actions, observations, answer, *, start_frame=0, answer_only=True):
+def evaluate_request(truth, state, poses, actions, observations, answer):
     results=[]
     previous_visit=-1
     for goal in truth['goals']:
@@ -53,11 +45,6 @@ def evaluate_request(truth, state, poses, actions, observations, answer, *, star
         elif kind=='answer':
             correct=contextual_answer_correct(answer,goal['expected_outcome'])
             evidence.update(success=correct,answer_correct=correct)
-            if not answer_only:
-                # Keep the original contract 1/2 execution semantics.
-                seen=observed(goal,observations,start_frame)
-                changes=any(action_name(a) in {'pick','place','open','close','reset'} for a in actions)
-                evidence.update(success=correct and seen and not changes,observation_valid=seen)
         else:raise RuntimeContractError('unknown goal kind')
         evidence['observations']=deepcopy([e for e in observations if e['object_id']==oid])
         evidence['actions']=deepcopy(actions)
@@ -79,10 +66,6 @@ def request_totals(results, *, valid=True):
             'exclusions':excluded,'evaluation_valid':valid,
             'task_score':success_rate, 'task_success_rate':success_rate,
             'success':all(r['success'] is True for r in scored) if valid and scored else None}
-    if any('evaluation' in r for r in results):
-        totals.update(metric_totals(results,valid=valid))
-        totals['task_score'] = totals['score_100']/100 if totals['score_100'] is not None else None
-    else:
-        totals.update(metric_version='binary_success_v1',score_max=100,
-                      score_100=success_rate*100 if success_rate is not None else None)
+    totals.update(metric_totals(results, valid=valid))
+    totals['task_score'] = totals['score_100']/100 if totals['score_100'] is not None else None
     return totals

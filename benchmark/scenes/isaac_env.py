@@ -116,7 +116,6 @@ class IsaacVLNEnv:
         self._safe_position = self._agent_position.copy()
         self._safe_yaw = 0.0
         self._safe_pitch = 0.0
-        self._session_start_pose: dict[str, Any] | None = None
         self._reset_applied = False
         self._yaw = 0.0
         self._pitch = 0.0
@@ -506,18 +505,6 @@ class IsaacVLNEnv:
         for object_id in sorted(desired - self._door_open):
             self._set_door_open(object_id, True)
 
-    def begin_session(self, start_pose: dict[str, Any] | None, *, apply_pose: bool = True) -> None:
-        """Set the session reset anchor without changing world state."""
-        if start_pose is not None and apply_pose:
-            self.set_agent_pose(start_pose, update_reset_pose=True)
-        if not self._walkable(self._agent_position):
-            self._agent_position = self._nearest_walkable_position(self._agent_position)
-            self._safe_position = self._agent_position.copy()
-            self._author_camera_pose()
-            self._update_overview_marker()
-        self._session_start_pose = deepcopy(self.get_agent_pose())
-        self._reset_applied = False
-
     def runtime_state(self) -> dict[str, Any]:
         return {"schema_version": 1, "objects": deepcopy(self._objects),
                 "held_object": self._held_object,
@@ -601,7 +588,7 @@ class IsaacVLNEnv:
         """Return the rendered camera pose in ROS quaternion order (x,y,z,w).
 
         The benchmark's public ``pose`` is a navigation/base pose and keeps a
-        yaw-only quaternion for compatibility.  RGB-D consumers need the
+        yaw-only quaternion for navigation. RGB-D consumers need the
         orientation of the actual render camera, including look pitch.
         """
         w, x, y, z = _camera_quaternion(self._yaw, self._pitch)
@@ -786,39 +773,6 @@ class IsaacVLNEnv:
             return None
         distance, object_id = min(candidates)
         return object_id, distance
-
-    def _nearby_doors(self, max_distance: float = 3.0) -> list[dict[str, Any]]:
-        values = []
-        for object_id in self._door_cells:
-            entity = self._objects.get(object_id, {})
-            bounds = entity.get("geometry", {}).get("world_aabb", {})
-            minimum, maximum = bounds.get("min"), bounds.get("max")
-            if not minimum or not maximum:
-                continue
-            x, y = self._agent_position[:2]
-            dx = max(float(minimum[0]) - x, 0.0, x - float(maximum[0]))
-            dy = max(float(minimum[1]) - y, 0.0, y - float(maximum[1]))
-            distance = math.hypot(dx, dy)
-            if distance <= max_distance:
-                values.append({"object_id": object_id, "distance_m": distance,
-                               "open": object_id in self._door_open,
-                               "passable": self._door_passable.get(object_id)})
-        return sorted(values, key=lambda item: item["distance_m"])
-
-    def _nearby_manipulable_objects(self, max_distance: float = 3.0) -> list[dict[str, Any]]:
-        """Expose local action affordances, never task targets or ground truth."""
-        values = []
-        for object_id in self._pickable:
-            entity = self._objects.get(object_id, {})
-            distance = float(self._np.linalg.norm(
-                self._get_object_world_position(object_id)[:2] - self._agent_position[:2]))
-            if distance <= max_distance:
-                values.append({"object_id": object_id,
-                               "category": entity.get("category"),
-                               "room_id": entity.get("room_id"),
-                               "distance_m": distance,
-                               "reachable": distance <= 1.5})
-        return sorted(values, key=lambda item: item["distance_m"])
 
     def _door_passage_connected(self, object_id: str) -> bool:
         """Check that a circular footprint can cross an opened doorway locally."""
@@ -1224,15 +1178,9 @@ class IsaacVLNEnv:
         attribute.Set(bool(enabled))
 
     def reset(self) -> None:
-        pose = self._session_start_pose
-        if pose is not None:
-            self._agent_position = self._np.array(pose["position"], dtype=float)
-            self._yaw = _quat_to_yaw(pose.get("orientation", [0.0, 0.0, 0.0, 1.0]))
-            self._pitch = float(pose.get("pitch", 0.0))
-        else:
-            self._agent_position = self._safe_position.copy()
-            self._yaw = self._safe_yaw
-            self._pitch = self._safe_pitch
+        self._agent_position = self._safe_position.copy()
+        self._yaw = self._safe_yaw
+        self._pitch = self._safe_pitch
         self._reset_applied = True
         self._author_camera_pose()
         self._update_overview_marker()
@@ -1255,9 +1203,7 @@ class IsaacVLNEnv:
             images["front"] = self._last_rgb
         result: dict[str, Any] = {
             "images": images, "depth": self._last_depth, "pose": self.get_agent_pose(),
-            "held_object": self._held_object, "room_id": self._room_at(self._agent_position),
-            "nearby_doors": self._nearby_doors(),
-            "nearby_manipulable_objects": self._nearby_manipulable_objects(),
+            "held_object": self._held_object,
             "action_feedback": deepcopy(self._last_action_feedback),
             "reset_applied": bool(self._reset_applied),
         }

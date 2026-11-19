@@ -270,10 +270,10 @@ def task_score(outcome):
         if score is not None and (type(score) not in (int,float) or not math.isfinite(score) or not 0 <= score <= 100):
             raise ValueError('invalid evaluation score')
         return score
-    return 100 if outcome['success'] else 0
+    return None
 
 
-def conditions(truth, names, *, metric_version=METRIC_VERSION):
+def conditions(truth, names):
     if not truth:
         return ['未形成可下发运行时 GT；排除，不用离线位置代替。']
     result = []
@@ -294,13 +294,7 @@ def conditions(truth, names, *, metric_version=METRIC_VERSION):
             expected = goal['expected_outcome']
             accepted = expected.get('accepted_answers', [expected.get('answer')])
             text = f'{name}：{goal.get("query")}；答案 {accepted}'
-            if metric_version in {'progress_path_v2', METRIC_VERSION}:
-                text += '；仅按答案正确性计 100／0 分，无观察或动作过程分'
-            else:
-                text += '；不得执行改变世界的操作'
-            if metric_version not in {'progress_path_v2', METRIC_VERSION} and goal.get('inspection_contract'):
-                c = goal['inspection_contract']
-                text += f'；本任务下发后有效观察，距离 ≤ {c["max_distance_m"]} m、可见像素 ≥ {c["min_visible_pixels"]}'
+            text += '；仅按答案正确性计 100／0 分，无观察或动作过程分'
         result.append(text)
     if len(result) > 1:
         result.append('须依次完成全部目标，后一个到达样本必须晚于前一个。')
@@ -351,28 +345,13 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
     reconstruction = ReconstructedReference(reference_dataset, config, reference_output) if reference_dataset else None
     if reconstruction:
         sources.update(reconstruction.sources)
-    completion = None
-    for ancestor in root.parents:
-        file = ancestor / 'completion.json'
-        if file.is_file():
-            value = json.loads(file.read_text())
-            if value.get('run_directory') == str(root):
-                completion = {k: value.get(k) for k in ('status', 'completed_tasks', 'completed_sessions', 'error', 'isaac_exit_code')}
-                sources.add(file)
-                log = ancestor / 'isaac.log'
-                if log.is_file():
-                    with log.open('rb') as stream:
-                        stream.seek(max(0, log.stat().st_size - 65536))
-                        tail = stream.read().decode('utf-8', errors='replace')
-                    if '[benchmark] summary_write_failed' in tail:
-                        completion['summary_write_failed'] = True
-                        completion['summary_errors'] = sorted(set(line.strip() for line in tail.splitlines() if line.startswith(('AttributeError:', 'TypeError:', 'ValueError:'))))
-                        sources.add(log)
-                break
+    status_path = root/'status.json'
+    status = json.loads(status_path.read_text()) if status_path.is_file() else None
+    if status is not None:
+        sources.add(status_path)
     names = {}
-    dataset_root = Path(config.get('dataset_root', ''))
-    cache_path = Path(config['runtime_scene_cache']) if config.get('runtime_scene_cache') else dataset_root / 'private/scene/runtime_scene_cache.json'
-    if cache_path.is_file():
+    cache_path = Path(config['runtime_scene_cache']) if config.get('runtime_scene_cache') else None
+    if cache_path and cache_path.is_file():
         names = json.loads(cache_path.read_text()).get('names', {})
         sources.add(cache_path)
     rows, issues, session_checks = [], [], []
@@ -443,14 +422,14 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
                                  for g in (truth or task['original_ground_truth'])['goals']],
                 'formal_task_score': None if rescore else score, 'excluded': outcome.get('scored') is False,
                 'original_task_score': score,
-                'original_metric_version':outcome.get('evaluation',{}).get('version','binary_success_v1'),
+                'original_metric_version':outcome.get('evaluation',{}).get('version',None),
                 'success': outcome.get('success'), 'reason_code': outcome.get('reason_code'),
                 'agent_status': outcome.get('agent_status'), 'steps': outcome.get('steps', 0),
-                'metric_version':METRIC_VERSION if rescore else outcome.get('evaluation',{}).get('version','binary_success_v1'),
+                'metric_version':METRIC_VERSION if rescore else outcome.get('evaluation',{}).get('version',None),
                 'evaluation':None if rescore else outcome.get('evaluation'), 'completion_score':100 if outcome.get('success') is True else 0 if not outcome.get('scored') is False else None,
                 'prediction': outcome.get('prediction'), 'goal_results': evidence,
                 'runtime_gt': compact_gt(truth), 'original_gt': compact_gt(task['original_ground_truth']),
-                'success_conditions': conditions(truth, names, metric_version=METRIC_VERSION if rescore else outcome.get('evaluation',{}).get('version','binary_success_v1')), 'repair_record': repair['repair_record'],
+                'success_conditions': conditions(truth, names), 'repair_record': repair['repair_record'],
                 'failure_causes': outcome.get('failure_causes', []), 'navigation': None,
                 'runtime_gt_source': {'file': str(session_file(path, 'runtime_tasks.jsonl')), 'line': line},
                 'outcome_source': {'file': str(session_file(path, 'request_outcomes.jsonl')), 'line': outcome_line},
@@ -513,11 +492,11 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
         provenance.append({'file': str(file), 'bytes': file.stat().st_size, 'sha256': sha256_file(file)})
     return {'schema_version': 1, 'private': True, 'run_directory': str(root),
         'rescored':rescore, 'reference_reconstruction':reconstruction.provenance if reconstruction else None,
-        'original_run_official': config.get('official'), 'original_completion': completion, 'near_margin_m': near_margin_m,
+        'original_run_official': config.get('official'), 'original_status': status, 'near_margin_m': near_margin_m,
         'summary': totals, 'session_checks': session_checks, 'issues': issues,
         'tasks': rows, 'source_files': provenance,
         'method': {
-            'formal': 'versioned 0-100 progress_path_v3; historical progress_path_v1/v2 and binary_success_v1 retained; exclusions N/A',
+            'formal': '0-100 progress_path_v3; exclusions N/A; missing evidence remains unscored',
             'distance': 'Euclidean XY point-to-runtime-AABB distance, same as v3 scorer; not navmesh distance',
             'remaining': 'r=max(distance-tolerance,0)',
             'progress': '100*clip(1-r/r_start,0,1); r_start=0: 100 inside allowed range, otherwise 0',
@@ -541,7 +520,7 @@ def summarize(rows):
     return {'tasks_total': len(rows), 'tasks_evaluated': len(scored),
         'successes': sum(r['success'] is True for r in scored),
         'failures': sum(r['success'] is False for r in scored),
-        'metric_versions':sorted(set(r.get('metric_version','binary_success_v1') for r in scored)),
+        'metric_versions':sorted({r['metric_version'] for r in scored if r.get('metric_version')}),
         'tasks_with_metric':sum(r['formal_task_score'] is not None for r in scored),
         'metrics_complete':all(r['formal_task_score'] is not None for r in scored),
         'task_success_rate':sum(r['success'] is True for r in scored)/len(scored) if scored else None,
@@ -550,7 +529,7 @@ def summarize(rows):
         'exclusions': dict(Counter(r['reason_code'] for r in rows if r['excluded'])),
         'formal_rule_average': sum(r['formal_task_score'] for r in scored) / len(scored)
             if scored and all(r['formal_task_score'] is not None for r in scored)
-            and len(set(r.get('metric_version','binary_success_v1') for r in scored))==1 else None,
+            and len(set(r.get('metric_version',None) for r in scored))==1 else None,
         'outcomes': dict(Counter(r['reason_code'] for r in rows)),
         'navigation_tasks': len(nav),
         'navigation_successes': sum(r['success'] is True for r in rows if r['navigation']),

@@ -54,6 +54,17 @@ except ModuleNotFoundError:  # direct ``python examples/<script>.py`` launch
     )
 
 
+from benchmark.agents.protocol import PROTOCOL_VERSION
+
+
+def _navigation_request(payload):
+    return payload.get('type') == 'step' and set(payload.get('capabilities', [])) == {'navigation'}
+
+
+def _unsupported(reason):
+    return {'action': 'no_op', 'done': True, 'agent_status': 'unsupported', 'reason_code': reason}
+
+
 def _pose_xy(pose: Any) -> tuple[float, float] | None:
     if not isinstance(pose, dict):
         return None
@@ -119,11 +130,6 @@ class FsrVlnPlanner:
     def _instruction_text(value: Any) -> str:
         if isinstance(value, str):
             return value.strip()
-        if isinstance(value, dict):
-            rooms = value.get("rooms")
-            if isinstance(rooms, list):
-                return " ".join(str(item.get("text", "")) for item in rooms
-                                 if isinstance(item, dict)).strip()
         return ""
 
     @staticmethod
@@ -156,14 +162,13 @@ class FsrVlnPlanner:
         if request_type == "session_start":
             self._session_instruction = payload.get("instruction")
             self.reset()
-            return {"memory_update": {"holoagent_planner": "fsr_vln_ready"}}
-        if request_type == "qa":
-            return {"answer": ""}
+            sequence = payload.get('sequence_context', {})
+            return {'memory_update': {'holoagent_planner': 'fsr_vln_ready'},
+                    **({'sequence_reset_ack': sequence['run_id']} if sequence.get('reset_memory') else {})}
         if request_type != "step":
             return {"action": {"action": "no_op"}, "done": True}
-        if payload.get("task_type") != "navigation":
-            return {"action": {"action": "no_op"}, "done": False,
-                    "gateway_status": "fsr_vln_navigation_only"}
+        if not _navigation_request(payload):
+            return _unsupported('fsr_vln_navigation_only')
 
         instruction = self._instruction_text(payload.get("instruction"))
         # Mapping is asynchronous: the first step can arrive before the
@@ -207,6 +212,7 @@ class LiveOvoPlanner:
                  max_segment_m: float = 0.5,
                  turn_threshold_degrees: float = 10.0) -> None:
         self.mapper = mapper
+        self._sequence_run_id = None
         self._tolerance = max(0.05, float(tolerance_m))
         self._max_segment = max(0.05, float(max_segment_m))
         self._turn_threshold = math.radians(max(1.0, float(turn_threshold_degrees)))
@@ -281,20 +287,23 @@ class LiveOvoPlanner:
     def plan(self, payload: dict[str, Any]) -> dict[str, Any]:
         request_type = payload.get("type")
         if request_type == "session_start":
+            sequence = payload.get('sequence_context', {})
+            if sequence.get('reset_memory'):
+                if self._sequence_run_id is not None and self._sequence_run_id != sequence['run_id']:
+                    raise RuntimeError('restart the live OVO service for a fresh sequence map')
+                self._sequence_run_id = sequence['run_id']
             self._task_instruction = None
             self._target = None
             self._candidate_object_id = None
             self._attempted_object_ids.clear()
             self._awaiting_candidate_check = False
             self._exploration_steps = 0
-            return {"memory_update": {"holoagent_planner": "live_ovo_ready"}}
-        if request_type == "qa":
-            return {"answer": ""}
+            return {'memory_update': {'holoagent_planner': 'live_ovo_ready'},
+                    **({'sequence_reset_ack': sequence['run_id']} if sequence.get('reset_memory') else {})}
         if request_type != "step":
             return {"action": {"action": "no_op"}, "done": True}
-        if payload.get("task_type") != "navigation":
-            return {"action": {"action": "no_op"}, "done": False,
-                    "gateway_status": "live_ovo_navigation_only"}
+        if not _navigation_request(payload):
+            return _unsupported('live_ovo_navigation_only')
         status = self._status()
         instruction = FsrVlnPlanner._instruction_text(payload.get("instruction"))
         if instruction != self._task_instruction:
@@ -425,101 +434,24 @@ class ManipulationStateMachine:
         self.task_id: str | None = None
         self.recovery_turns = 0
 
-    @staticmethod
-    def _normalized(value: Any) -> str:
-        text = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(value)).casefold()
-        text = re.sub(r"([a-z])([0-9])", r"\1 \2", text)
-        return " ".join(part for part in re.split(r"[^a-z0-9]+", text) if part)
-
-    @classmethod
-    def _words(cls, value: Any) -> set[str]:
-        return set(cls._normalized(value).split())
-
-    def _destination_room(self, payload: dict[str, Any]) -> str | None:
-        instruction = str(payload.get("instruction", ""))
-        normalized = self._normalized(instruction)
-        matches = []
-        rooms = (payload.get("session_instruction") or {}).get("rooms", [])
-        for room in rooms if isinstance(rooms, list) else []:
-            room_id = str(room.get("room_id", ""))
-            phrase = self._normalized(room_id)
-            position = normalized.rfind(phrase)
-            if phrase and position >= 0:
-                matches.append((position, room_id))
-        return max(matches)[1] if matches else None
-
-    def _reachable_target(self, payload: dict[str, Any]) -> str | None:
-        instruction_words = self._words(payload.get("instruction", ""))
-        values = (payload.get("observation") or {}).get("nearby_manipulable_objects", [])
-        candidates = []
-        for item in values if isinstance(values, list) else []:
-            if not isinstance(item, dict) or not item.get("reachable"):
-                continue
-            label_words = self._words(item.get("category")) | self._words(item.get("object_id"))
-            # Ignore room/index boilerplate and require a semantic noun match.
-            useful = label_words - {"room", "living", "master", "study", "bedroom",
-                                    "bathroom", "corridor", "kitchen", "balcony"}
-            score = len(useful & instruction_words)
-            if score:
-                candidates.append((-score, float(item.get("distance_m", 999.0)),
-                                   str(item.get("object_id"))))
-        return min(candidates)[2] if candidates else None
+    def reset(self):
+        self.task_id = None
+        self.recovery_turns = 0
 
     def plan(self, payload: dict[str, Any]) -> dict[str, Any]:
-        task_id = str(payload.get("task_id", ""))
+        task_id = str(payload.get('task_id', ''))
         if task_id != self.task_id:
             self.task_id, self.recovery_turns = task_id, 0
-        observation = payload.get("observation") or {}
-        previous = payload.get("previous_result") or {}
-        held = observation.get("held_object")
-        destination = self._destination_room(payload)
-
-        if held and destination and observation.get("room_id") == destination:
-            return {"action": {"action": "place", "room_id": destination},
-                    "done": False, "gateway_status": "manipulation_place"}
-        if not held:
-            target = self._reachable_target(payload)
-            if target:
-                return {"action": {"action": "pick", "object_id": target},
-                        "done": False, "gateway_status": "manipulation_pick"}
-
-        # A carried object cannot be moved through a closed doorway. Ask for
-        # the affordance explicitly before collision recovery/model actions so
-        # the door is visibly opened and the swept object remains physical.
-        if held:
-            nearby_doors = observation.get("nearby_doors") or []
-            closed_door = next(
-                (door for door in nearby_doors
-                 if isinstance(door, dict) and not door.get("open")
-                 and float(door.get("distance_m", 999.0)) <= 1.55),
-                None,
-            )
-            # The pickup transition is allowed to pre-open the nearest door;
-            # after that, only a collision at the door itself (<= 1 m) may
-            # trigger another open. This avoids opening unrelated nearby
-            # doors when a model is merely recovering from a wall collision.
-            collision_at_door = bool(previous.get("collision")) and (
-                closed_door is not None
-                and float(closed_door.get("distance_m", 999.0)) <= 1.0)
-            pickup_near_door = (not previous or previous.get("reason") == "picked") \
-                and closed_door is not None
-            if collision_at_door or pickup_near_door:
-                return {"action": {"action": "open", "object_id": closed_door["object_id"]},
-                        "done": False, "gateway_status": "manipulation_open_door"}
-
-        # Break the common forward/backward collision loop before consulting
-        # the model again. Alternating turns exposes new views to the VLM.
-        if previous.get("collision") or previous.get("reason") == "blocked":
+        previous = (payload.get('observation') or {}).get('action_feedback') or {}
+        # Recover using public feedback; object selection and release are
+        # decisions of the visual policy, using introduced names only.
+        if previous.get('collision') or previous.get('reason') == 'blocked':
             self.recovery_turns += 1
-            return {"action": {"action": "turn_left" if self.recovery_turns % 2 else "turn_right",
-                                "angle_degrees": 45.0},
-                    "done": False, "gateway_status": "manipulation_collision_recovery"}
-
+            return {'action': {'action': 'turn_left' if self.recovery_turns % 2 else 'turn_right',
+                               'angle_degrees': 45.0},
+                    'done': False, 'gateway_status': 'manipulation_collision_recovery'}
         response = normalize_response(self.vlm.request(payload))
-        action = response["action"]
-        if action.get("action") == "place" and held and destination:
-            action["room_id"] = destination
-        response.setdefault("gateway_status", "manipulation_vlm")
+        response.setdefault('gateway_status', 'manipulation_vlm')
         return response
 
 
@@ -536,28 +468,32 @@ class CompositeHoloAgentPlanner:
         request_type = payload.get("type")
         if request_type == "session_start":
             updates: dict[str, Any] = {}
+            sequence = payload.get('sequence_context', {})
+            if sequence.get('reset_memory') and self.manipulation is not None:
+                self.manipulation.reset()
             if self.navigation is not None:
                 nav = self.navigation.plan(payload)
+                if sequence.get('reset_memory') and nav.get('sequence_reset_ack') != sequence['run_id']:
+                    raise RuntimeError('navigation backend did not acknowledge a fresh sequence')
                 if isinstance(nav.get("memory_update"), dict):
                     updates.update(nav["memory_update"])
             if self.vlm is not None:
                 response = self.vlm.request(payload)
+                if sequence.get('reset_memory') and response.get('sequence_reset_ack') != sequence['run_id']:
+                    raise RuntimeError('VLM backend did not acknowledge a fresh sequence')
                 if isinstance(response.get("memory_update"), dict):
                     updates.update(response["memory_update"])
-            return {"ok": True, "memory_update": updates}
-        if request_type == "step" and payload.get("task_type") == "navigation" \
-                and self.navigation is not None:
+            return {'ok': True, 'memory_update': updates,
+                    **({'sequence_reset_ack': sequence['run_id']} if sequence.get('reset_memory') else {})}
+        if _navigation_request(payload) and self.navigation is not None:
             return self.navigation.plan(payload)
-        if request_type == "step" and payload.get("task_type") == "manipulation" \
+        if request_type == 'step' and 'manipulation' in payload.get('capabilities', []) \
                 and self.manipulation is not None:
             return self.manipulation.plan(payload)
         if self.vlm is not None:
             response = self.vlm.request(payload)
             return normalize_response(response) if request_type == "step" else response
-        if request_type == "qa":
-            return {"answer": "", "gateway_status": "qa_model_not_configured"}
-        return {"action": {"action": "no_op"}, "done": False,
-                "gateway_status": "skill_model_not_configured"}
+        return _unsupported('skill_model_not_configured')
 
 
 class RemoteProtocolAdapter:
@@ -688,7 +624,7 @@ class PlannerGatewayHandler(GatewayHandler):
         if not self.planner_url:
             return None
         response = _post_json(self.planner_url, {
-            "protocol_version": "1.0",
+            "protocol_version": PROTOCOL_VERSION,
             "source": "longterm_benchmark_server",
             "request": value,
         }, self.planner_timeout)

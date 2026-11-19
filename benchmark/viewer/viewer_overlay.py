@@ -4,9 +4,6 @@ import math
 import time
 
 def _english(value: object, fallback: str = "Complete the current task.") -> str:
-    if isinstance(value, dict):
-        views = value.get("rooms", [])
-        value = " ".join(str(item.get("text", "")) for item in views)
     text = str(value or "")
     return text if text else fallback
 
@@ -47,29 +44,11 @@ class ViewerOverlay:
             self._operation_count = 0
             self._movement_count = 0
             self._reset_count = 0
-            self._reset.enabled = values.get('runtime_contract', {}).get('name') != 'contextual_requests'
+            self._reset.enabled = False
             text = _english(values.get("session_instruction") or values.get("instruction"))
-            poses = values.get("session_camera_poses") or []
-            if poses and isinstance(poses[0], dict):
-                position = poses[0].get("position") or []
-                if len(position) >= 3:
-                    text += " | Initial camera pose: (%.2f, %.2f, %.2f)" % tuple(float(v) for v in position[:3])
             self._session.text = "Scene memory: " + text
         elif event == "task_start":
             self._operation_count = self._movement_count = 0
-        elif event == "session_view":
-            self._title.text = "SESSION VIEW  •  ROOM MEMORY"
-            view_text = _english(values.get("view_text"), "Room view")
-            self._body.text = view_text
-            self._session.text = "Scene memory: " + view_text
-        elif event == "session_views_complete":
-            self._session.text = ""
-            self._title.text = "SESSION READY"
-            self._body.text = "Room memory views complete. Starting the task from the reset pose."
-        elif event == "session_ready":
-            self._session.text = ""
-            self._title.text = "COMMANDER / USER"
-            self._body.text = "Session room views complete; current task is starting."
         elif event in {"step", "reset"}:
             self._operation_count = int(values.get("step", self._operation_count)) + 1
             before = values.get("before") or {}

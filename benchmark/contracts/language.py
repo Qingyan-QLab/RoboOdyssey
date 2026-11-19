@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 from string import Formatter
 
@@ -69,14 +69,14 @@ def historical_reference(reference):
     return f"the {noun} I asked you to {action} {when}"
 
 
-def validate_public_wording(text: str, *, allow_legacy=False) -> None:
+def validate_public_wording(text: str) -> None:
     """Reject privileged position encodings and numbered area identifiers."""
     if re.search(
         r"(?i)(?:center_xyz|world_aabb|world_matrix|\b[xyz]\s*[:=]|[\[(]\s*-?\d+(?:\.\d+)?\s*,\s*-?\d|(?<!\w)-?\d+\.\d+)",
         text,
     ):
         raise HistoryError("public task text must not contain scene coordinates")
-    if not allow_legacy and re.search(
+    if re.search(
         r"\bsessions?\b|\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(?:st|nd|rd|th))\s+(?:object|item|day)\b"
         r"|\bday\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|first|second|third)\b"
         r"|\b(?:object|item)\s+(?:number\s+)?\d+|第\s*[一二三四五六七八九十百\d]+\s*(?:天|个|次)",
@@ -87,8 +87,6 @@ def validate_public_wording(text: str, *, allow_legacy=False) -> None:
             "use explicit calendar time and object descriptions, not session/object/day ordinals"
         )
     cleaned = text
-    if allow_legacy:
-        cleaned = re.sub(r"(?i)\b(?:session|number)\s+\d+\b", "", cleaned)
     cleaned = re.sub(
         r"\b(?:" + "|".join(MONTHS) + r") (?:[1-9]|[12]\d|3[01]), \d{4}\b", "", cleaned, flags=re.I
     )
@@ -118,10 +116,6 @@ def clauses_for(contract: dict, *, object_phrase: str | None = None) -> list[str
         reference = contract["historical_reference"]
         if "source_time" in reference:
             target = historical_reference(reference)
-        elif contract.get("legacy_reference"):
-            ordinal = reference["ordinal"]
-            ordinal_text = {1: "first", 2: "second", 3: "third"}.get(ordinal, f"number {ordinal}")
-            target = f"the {ordinal_text} object you {reference['event_action']} in session {reference['session_number']}"
         else:
             raise HistoryError("historical reference requires explicit request time")
     else:
@@ -192,10 +186,10 @@ def clause_options(clause: str) -> list[str]:
     return alternatives
 
 
-def validate_realization(text: str, clauses: list[str], *, allow_legacy=False) -> str:
+def validate_realization(text: str, clauses: list[str]) -> str:
     if not isinstance(text, str) or not text.strip() or len(text) > 2000:
         raise HistoryError("language output must be non-empty bounded text")
-    validate_public_wording(text, allow_legacy=allow_legacy)
+    validate_public_wording(text)
     remainder = text.strip()
     gaps = []
     for clause in clauses:

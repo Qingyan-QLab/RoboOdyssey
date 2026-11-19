@@ -78,9 +78,9 @@ def execute(config, *, checked=None):
     root.mkdir(parents=True, exist_ok=False)
     (root/'logs').mkdir()
     entries = []
-    for i, data in enumerate(datasets):
+    for data in datasets:
         identity = data.sequence_identity()
-        key = safe_id(identity.get('sequence_id') or f'default_{i:03d}')
+        key = safe_id(identity['sequence_id'])
         entries.append({'identity': identity, 'dataset': str(data.root), 'directory': f'sequences/{key}', 'exit_code': None})
     write_json(root/'manifest.json', {'artifact_schema': 'benchmark_results', 'schema_version': 2, 'kind': 'experiment',
                'runs': entries, 'config': 'config.json', 'status': 'status.json', 'reports': 'reports'})

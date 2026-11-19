@@ -94,7 +94,7 @@ HTTP 错误、限流、超时、无效输出、拒答和身份异常均作为 `i
 `--check-config` 不读取密钥、不连接网络或创建日志。密钥仅从 `api_key_env` 指定的环境变量读取。
 所有相对文件路径按配置文件目录解析，此 JSON 只由 Agent 读取，不传给 SimpleNav 实验管理器。
 
-旧版 `history_frames`、记忆预算、重试配置及 `api=chat_completions` 已移除；本机配置须通过 `--check-config`。
+本机配置须通过 `--check-config` 校验。
 不自动降级为无状态调用，否则无法满足系统 prompt／图像只上传一次以及跨任务记忆要求。
 
 以下实跑命令不属于离线检查，需 API 凭据与 Isaac：

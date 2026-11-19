@@ -9,7 +9,7 @@
 ## 当前接入行为
 
 `examples/simplenav_agent.py` 使用 `benchmark/agents/simplenav.py` 的可注入状态机。
-旧版 `navigation` 与 v5 `long_horizon` 都能进入导航预测。v5 依据公开
+`long_horizon` 请求依据公开
 `capabilities` 路由，不读取私有 GT、模板、房间／对象 ID、修补结果或 overview。
 
 入口共用 `benchmark/agents/stream.py`，接收线程在模型预测期间持续收图。
@@ -23,7 +23,7 @@ SimpleNav 当前只支持导航；包含 QA 或 manipulation 的请求返回 `ag
 
 同一场景跨 Session 保留图像历史、公开名称定义以及最近 32 条已下发请求的文本和
 情境时间；请求记录明确不代表成功经历。场景变化清空这些内容。新序列使用新 Agent
-进程／隔离记忆。v5 不用附近物体清单自动开门；旧版的自动开门行为仅保留在旧协议。
+进程／隔离记忆。v5 不用附近物体清单自动开门。
 碰撞恢复默认连续 5 次受阻后尝试 reset，可通过 collision_reset_threshold 调整（0 关闭），并遵守 allowed_actions。
 
 名称账本和状态修补遵守 [统一修补规则](RULES.md#repair)。
@@ -128,5 +128,5 @@ CPU 回归覆盖 v5 导航分流、公开名称和跨 Session 记忆、能力不
 ```
 
 该脚本检查相机新帧、可见像素、观测不改变世界状态，以及归档对应的实际 USD 状态。
-受控诊断检查失败后的修补和评分，不代表模型能力。各次实验观察、使用的旧命令和
+受控诊断检查失败后的修补和评分，不代表模型能力。各次实验观察、具体命令和
 验证计数随对应 `results/` 保存，不作为当前使用规则。
