@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from benchmark.artifacts.layout import sha256_file, write_json as write
-from benchmark.contracts.navigation_io import write_navigation_npz
-from benchmark.contracts.state import build_runtime_cache, digest
+from roboodyssey.artifacts.layout import sha256_file, write_json as write
+from roboodyssey.contracts.navigation_io import write_navigation_npz
+from roboodyssey.contracts.state import build_runtime_cache, digest
 
 _DATA = json.loads((Path(__file__).parent/'fixtures/contextual.json').read_text())
 SOURCE = {'session_id': 'session_000', 'task_id': 'move', 'goal_id': 'transfer_book_red'}
@@ -141,7 +141,7 @@ def shared_plan(plan, version, sequence_id):
 
 
 def result_session(root, scene_id='s', session_id='session_000'):
-    from benchmark.artifacts.layout import create_session
+    from roboodyssey.artifacts.layout import create_session
     root = Path(root)
     write(root/'manifest.json', {'artifact_schema': 'benchmark_results', 'schema_version': 2,
         'kind': 'run', 'runtime_contract': {'name': 'contextual_requests', 'version': 3},

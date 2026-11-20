@@ -15,8 +15,8 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from benchmark.agents.openai_api import APIError, OpenAIAPIAgent, SYSTEM, load_config, post_json
-from benchmark.agents.stream import serve
+from roboodyssey.agents.openai_api import APIError, OpenAIAPIAgent, SYSTEM, load_config, post_json
+from roboodyssey.agents.stream import serve
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -281,7 +281,7 @@ class APIAgentTests(unittest.TestCase):
             error = HTTPError('https://api.example', status, 'secret-test-key-do-not-log', {}, BytesIO(b'secret-test-key-do-not-log'))
             agent = self.agent(post_json)
             agent.handle(start())
-            with patch('benchmark.agents.openai_api.urlopen', side_effect=error) as send:
+            with patch('roboodyssey.agents.openai_api.urlopen', side_effect=error) as send:
                 response = agent.handle(step())
             self.assertEqual(send.call_count, 1)
             self.assertEqual(response['reason_code'], 'http_' + str(status))
@@ -395,7 +395,7 @@ class APIAgentTests(unittest.TestCase):
 
     def test_transport_auth_and_instance_isolation(self):
         raw = BytesIO(json.dumps(result()).encode()); raw.headers = {'x-request-id': 'req-test'}
-        with patch('benchmark.agents.openai_api.urlopen', return_value=raw) as send:
+        with patch('roboodyssey.agents.openai_api.urlopen', return_value=raw) as send:
             value = post_json('https://api.example/v1/responses', {'model': 'test'}, 'secret', 3)
         self.assertEqual(value['_http_request_id'], 'req-test')
         self.assertEqual(send.call_args.args[0].headers['Authorization'], 'Bearer secret')

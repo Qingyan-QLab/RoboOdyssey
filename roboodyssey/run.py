@@ -21,7 +21,6 @@ from .runtime.observations import OBSERVATION_POLICY
 from .evaluation.task_metrics import METRIC_POLICY
 from .scenes.holoagent_sensor_bridge import HoloAgentSensorTopics
 from .artifacts.layout import initialize_run, update_status, write_json
-from .viewer.viewport import _bind_viewport_camera, _place_viewport_window, _sync_viewer
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_HOLOAGENT_SENSOR_TOPICS = HoloAgentSensorTopics()
@@ -61,132 +60,6 @@ def _dataset_digest(root: Path) -> str:
             for block in iter(lambda: stream.read(1024 * 1024), b""):
                 value.update(block)
     return value.hexdigest()
-
-
-def _make_env_factory(
-    dataset: BenchmarkDataset,
-    app,
-    viewer: bool = False,
-    overview_holder: dict | None = None,
-    camera_config=None,
-    holoagent_sensor_topics=None,
-    video_options=None,
-):
-    import numpy as np
-    from .scenes.isaac_env import EnvConfig, IsaacVLNEnv
-
-    def factory(scene_id: str, initial_state: dict, session_id: str):
-        with np.load(dataset.navigation_path(scene_id), allow_pickle=False) as archive:
-            navigation = {key: archive[key].copy() for key in archive.files}
-        env = IsaacVLNEnv(
-            dataset.scene_asset(scene_id),
-            camera_config
-            or EnvConfig(camera_prim_path="/World/LongTermBenchmark/Camera"),
-            holoagent_sensor_topics=holoagent_sensor_topics,
-        )
-        env.configure_scene(
-            dataset.scene_metadata(scene_id),
-            navigation,
-            dataset.manipulation(scene_id),
-            initial_state,
-        )
-        if viewer or (video_options and video_options["layout"] == "front_overview"):
-            overview_path = env.setup_overview()
-        else:
-            overview_path = None
-        if video_options:
-            env.setup_review_capture(video_options["layout"])
-        from copy import deepcopy
-
-        start_pose = deepcopy(initial_state["robot_base_pose"])
-        start_pose["position"][2] += env.config.camera_height
-        env.set_agent_pose(start_pose)
-        try:
-            from pxr import Gf, UsdGeom, UsdLux
-
-            dome = UsdLux.DomeLight.Define(
-                env.stage, "/World/BenchmarkRuntime/DomeLight"
-            )
-            dome.CreateIntensityAttr(3000.0)
-            fill = UsdLux.DistantLight.Define(
-                env.stage, "/World/BenchmarkRuntime/FillLight"
-            )
-            fill.CreateIntensityAttr(800.0)
-            UsdGeom.XformCommonAPI(fill).SetRotate(Gf.Vec3f(25.0, -20.0, -35.0))
-        except Exception as exc:
-            print(f"warning: runtime lighting unavailable: {exc}")
-        if viewer:
-            from omni.kit.viewport.utility import (
-                get_active_viewport,
-                get_viewport_from_window_name,
-            )
-
-            viewport = get_viewport_from_window_name() or get_active_viewport()
-            if viewport is None:
-                raise RuntimeError("Isaac Sim main viewport is unavailable")
-            if overview_holder is not None:
-                overview_holder["front_viewport"] = viewport
-                overview_holder["overview_camera_path"] = overview_path
-            _bind_viewport_camera(viewport, env.config.camera_prim_path)
-            if overview_path and (not video_options):
-                try:
-                    try:
-                        from isaacsim.core.rendering_manager import ViewportManager
-
-                        overview = ViewportManager.create_viewport_window(
-                            camera=overview_path,
-                            title="Overview",
-                            resolution=(420, 300),
-                        )
-                    except (ImportError, AttributeError):
-                        from omni.kit.viewport.window import ViewportWindow
-
-                        overview = ViewportWindow(
-                            name="Overview", width=420, height=300
-                        )
-                    _bind_viewport_camera(
-                        getattr(overview, "viewport_api", overview), overview_path
-                    )
-                    if overview_holder is not None:
-                        previous = overview_holder.get("window")
-                        if previous is not None:
-                            try:
-                                previous.destroy()
-                            except Exception:
-                                pass
-                        overview_holder["window"] = overview
-                    env.attach_overview_window(overview)
-                    _place_viewport_window(overview)
-                    print(
-                        f"[viewer] main_viewport_camera={getattr(viewport, 'camera_path', None)} front_camera={env.config.camera_prim_path} overview={overview_path}"
-                    )
-                except Exception as exc:
-                    print(f"[viewer] warning: overview viewport unavailable: {exc}")
-        ready = False
-        capture_error = None
-        for _ in range(120):
-            app.update()
-            ready = env.try_observe() is not None
-            if ready and video_options:
-                try:
-                    env.capture_review_frames(video_options["layout"])
-                except RuntimeError as exc:
-                    ready, capture_error = (False, exc)
-            if ready:
-                break
-            env.render_once()
-        if not ready:
-            env.close()
-            raise RuntimeError(
-                "Isaac Sim requested cameras produced no RGB frame after initialization; check viewer/GPU rendering and camera annotator setup"
-            ) from capture_error
-        if viewer:
-            _bind_viewport_camera(viewport, env.config.camera_prim_path)
-        if viewer and overview_holder.get("window") is not None:
-            _place_viewport_window(overview_holder["window"])
-        return env
-
-    return factory
 
 
 def _inspect(dataset: BenchmarkDataset, scene_ids: list[str]) -> None:
@@ -398,15 +271,10 @@ def main(argv: list[str] | None = None) -> int:
     from .launch.provenance import capture_provenance
 
     capture_provenance(output_root / "provenance.json", dataset_root=dataset.root)
-    simulation_options = {"headless": not args.viewer}
-    if args.gpu is not None:
-        simulation_options.update(
-            active_gpu=args.gpu, physics_gpu=args.gpu, multi_gpu=False
-        )
-    try:
-        from isaacsim import SimulationApp
+    from .scenes.isaac_backend import IsaacBackend
 
-        app = SimulationApp(simulation_options)
+    try:
+        backend = IsaacBackend(viewer=args.viewer, gpu=args.gpu)
     except BaseException as exc:
         update_status(
             output_root,
@@ -423,10 +291,8 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGINT, interrupt_run)
     signal.signal(signal.SIGTERM, interrupt_run)
-    overlay = None
     summary_written = False
     run_exit_code = 1
-    overview_holder = {}
     try:
         logger = logging.getLogger("longterm_benchmark")
         logger.setLevel(logging.INFO)
@@ -509,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
             "max_steps_per_task": args.max_steps,
             "step_delay_seconds": args.step_delay,
             "viewer": args.viewer,
-            "simulation_options": simulation_options,
+            "simulation_options": backend.options,
             "recording": video_options,
             "overview_viewer": "Isaac Sim 3D top-down viewport"
             if args.viewer
@@ -556,20 +422,8 @@ def main(argv: list[str] | None = None) -> int:
             encoding="utf-8",
         )
         update_status(output_root, phase="running", execution="running")
-        if args.viewer:
-            from .viewer.viewer_overlay import ViewerOverlay
-
-            overlay = ViewerOverlay()
-
-        def update_overlay(**values):
-            if overlay is None:
-                return
-            overlay.update(**values)
-            app.update()
-
-        import omni.kit.app
-
-        update = omni.kit.app.get_app().update
+        backend.configure_viewer()
+        callbacks = backend.run_callbacks()
         with AgentProcess(
             args.agent_cmd,
             timeout=args.agent_timeout,
@@ -580,35 +434,12 @@ def main(argv: list[str] | None = None) -> int:
                 agent,
                 max_steps=args.max_steps,
                 step_delay=args.step_delay,
-                wait_callback=update,
-                viewer_callback=update_overlay if overlay else None,
-                transition_callback=(
-                    lambda: overlay.transition(1.0, omni.kit.app.get_app())
-                )
-                if overlay
-                else None,
-                reset_requested_callback=(lambda: overlay.consume_reset())
-                if overlay
-                else None,
-                viewer_sync_callback=(
-                    lambda _env: _sync_viewer(
-                        overview_holder.get("front_viewport"),
-                        overview_holder.get("window"),
-                        _env.config.camera_prim_path,
-                        overview_holder.get("overview_camera_path"),
-                        app,
-                    )
-                )
-                if args.viewer
-                else None,
                 log_callback=lambda message: logger.info(message),
                 video_options=video_options,
+                **callbacks,
             )
-            factory = _make_env_factory(
+            factory = backend.scene_factory(
                 dataset,
-                app,
-                viewer=args.viewer,
-                overview_holder=overview_holder,
                 camera_config=camera_config,
                 holoagent_sensor_topics=holoagent_sensor_topics,
                 video_options=video_options,
@@ -646,26 +477,13 @@ def main(argv: list[str] | None = None) -> int:
                 update_status(output_root, summary="failed", summary_error=str(exc))
                 if "logger" in locals():
                     logger.exception("summary_write_failed")
-        if overlay is not None:
-            overlay.close()
-        overview = overview_holder.get("window")
-        if overview is not None:
-            try:
-                overview.destroy()
-            except Exception:
-                pass
-        import inspect
-
         update_status(
             output_root,
             phase="completed" if run_exit_code == 0 else "failed",
             cleanup="simulator_close_requested",
             exit_code=run_exit_code,
         )
-        if "exit_code" in inspect.signature(app.close).parameters:
-            app.close(exit_code=run_exit_code)
-        else:
-            app.close()
+        backend.close(run_exit_code)
     return 0
 
 

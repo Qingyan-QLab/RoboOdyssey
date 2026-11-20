@@ -1,7 +1,7 @@
 # Agent Protocol v1.1
 
 runner 和 Agent 通过 stdin/stdout 交换 JSONL，协议版本为 1.1。每行 stdout 是一个 JSON 对象，
-日志写入 stderr。完整响应 schema 见 [protocol_schema.json](../benchmark/agents/protocol_schema.json)。
+日志写入 stderr。完整响应 schema 见 [protocol_schema.json](../roboodyssey/agents/protocol_schema.json)。
 本页维护消息结构；执行顺序、公开信息边界、动作限制和结果处理统一见 [运行与评分规则](RULES.md)。
 
 ## 请求与响应
@@ -54,7 +54,7 @@ v5 observation 可包含 images、depth、pose、reset_applied、holding_object�
 单调时间只用于同一运行内比较，不能当作情境日历或跨机器 UTC。
 timing 不含目标可见性、对象 ID 或 GT。Agent 无需响应 observation，每次 step 仍只回复一条消息。
 
-示例共用 [stream.serve](../benchmark/agents/stream.py)：接收线程持续读消息，可通过
+示例共用 [stream.serve](../roboodyssey/agents/stream.py)：接收线程持续读消息，可通过
 on_observation 回调即时处理每一帧；独立工作线程执行模型调用。handler 的 observation_history
 是 Agent 自己保存的先前图像快照，排除当前帧，推理期间的新图用于后续调用。
 此字段由示例接收器在 Agent 内部添加，不由 Benchmark 筛选后发送。

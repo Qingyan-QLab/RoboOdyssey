@@ -6,7 +6,7 @@ import uuid
 import time
 from pathlib import Path
 from ..data.frozen import SequenceData
-from benchmark.contracts.contextual import (
+from roboodyssey.contracts.contextual import (
     normalize_state,
     instantiate_request_v3,
     execution_events_v3,
@@ -16,6 +16,7 @@ from benchmark.contracts.contextual import (
 from ..evaluation.requests import evaluate_request, request_totals
 from ..evaluation.task_metrics import evaluate_metrics, prepare_reference
 from ..evaluation.transfer import TransferReference, collision_digest
+from .environment import RequestEnvironment, RequestEnvironmentFactory
 from .session_runner import _jsonable, _merge_memory
 from .observations import capture_observation
 from .request_events import RequestEvents, state_changes, source_context
@@ -34,7 +35,7 @@ def append(path, value):
         stream.write(json.dumps(value, ensure_ascii=False, allow_nan=False) + "\n")
 
 
-def actual_state(env, cache):
+def actual_state(env: RequestEnvironment, cache):
     raw = env.runtime_state_v5()
     raw = deepcopy(raw)
     raw.setdefault("robot_pose", env.get_agent_pose())
@@ -91,7 +92,7 @@ def load_runtime_context(root):
     return SequenceData(root).mutation_context()
 
 
-def apply_boundary(env, context, mutations, cache, history, output, events=None):
+def apply_boundary(env: RequestEnvironment, context, mutations, cache, history, output, events=None):
     for mutation in mutations:
         before = actual_state(env, cache)
         result = prepare_mutation_v3(context, mutation, cache, before, history)
@@ -135,7 +136,7 @@ def apply_boundary(env, context, mutations, cache, history, output, events=None)
             )
 
 
-def run_requests(runner, scene_id, sessions, canonical_state, env_factory):
+def run_requests(runner, scene_id, sessions, canonical_state, env_factory: RequestEnvironmentFactory):
     env = events = None
     history, ledger, memory = ([], {}, {})
     output, results, pending = (None, [], None)

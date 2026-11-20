@@ -6,12 +6,12 @@ import unittest
 from unittest.mock import patch
 
 from tests.test_contextual_requests import Env, Agent, fixture_v3, task, goal, select_scenario, write_dataset
-from benchmark.scenes.dataset_loader import BenchmarkDataset
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.launch.sequences import aggregate_runs, child_arguments, run_collection
-from benchmark.evaluation.report import write_summary
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.launch.sequences import aggregate_runs, child_arguments, run_collection
+from roboodyssey.evaluation.report import write_summary
 from tests.frozen_data import prepare_scene
-from benchmark.data.frozen import select_sequences
+from roboodyssey.data.frozen import select_sequences
 from tests.frozen_data import shared_plan
 
 
@@ -83,7 +83,7 @@ class SequenceIntegrationTests(unittest.TestCase):
     def test_batch_dry_run_does_not_start_child_or_simulation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self.collection(Path(tmp) / 'scene')
-            with patch('benchmark.launch.sequences.subprocess.Popen') as process:
+            with patch('roboodyssey.launch.sequences.subprocess.Popen') as process:
                 self.assertEqual(run_collection(select_sequences(root), Path(tmp) / 'output', [], dry_run=True), 0)
                 process.assert_not_called()
 
@@ -99,8 +99,8 @@ class SequenceIntegrationTests(unittest.TestCase):
                 from types import SimpleNamespace
                 return SimpleNamespace(wait=lambda: 0, poll=lambda: 0, pid=99999999)
             output = Path(tmp) / 'results'
-            with patch('benchmark.launch.sequences.subprocess.Popen', side_effect=spawn), \
-                 patch('benchmark.launch.sequences.os.killpg', side_effect=ProcessLookupError):
+            with patch('roboodyssey.launch.sequences.subprocess.Popen', side_effect=spawn), \
+                 patch('roboodyssey.launch.sequences.os.killpg', side_effect=ProcessLookupError):
                 self.assertEqual(run_collection(select_sequences(root), output,
                     ['--dataset', str(root), '--all-sequences', '--agent-cmd', 'python agent.py']), 0)
             self.assertEqual(len(launched), 2)

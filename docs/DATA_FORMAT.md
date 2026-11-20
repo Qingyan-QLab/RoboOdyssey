@@ -6,10 +6,10 @@ Task Builder／Session Builder；manifest 的 `builder` 字段只记录数据来
 ## 入口与缓存
 
 ```bash
-python -m benchmark validate ../OSS/scene000010/session.tar
-python -m benchmark doctor --dataset ../OSS/scene000010/session.tar
-python -m benchmark run --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
-python -m benchmark run --dataset ../OSS/scene000010/session.tar --all-sequences --dry-run
+python -m roboodyssey validate ../OSS/scene000010/session.tar
+python -m roboodyssey doctor --dataset ../OSS/scene000010/session.tar
+python -m roboodyssey run --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
+python -m roboodyssey run --dataset ../OSS/scene000010/session.tar --all-sequences --dry-run
 ```
 
 `run`、`doctor`、`validate`、SimpleNav 的 `preflight / experiment` 和显式历史重算均支持 tar。
@@ -69,7 +69,7 @@ session.tar
 
 ## 运行时职责与公开边界
 
-`benchmark/data/` 只读取数据，`benchmark/contracts/` 提供冻结语言渲染、真实历史绑定、状态修补、
+`roboodyssey/data/` 只读取数据，`roboodyssey/contracts/` 提供冻结语言渲染、真实历史绑定、状态修补、
 mutation 可行性、动态导航和放置几何。mutation 的最小上下文直接来自冻结房间、导航和可搬运对象表，
 不构造生成器或重新规划任务。运行失败后的请求／GT 按实际状态修补，原归档保持不变。
 

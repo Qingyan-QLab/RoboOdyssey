@@ -1,13 +1,13 @@
 from tests.frozen_data import result_session
-from benchmark.artifacts.layout import session_file
+from roboodyssey.artifacts.layout import session_file
 import csv
 import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from benchmark.evaluation.task_diagnostics import analyze_run, navigation_diagnostics, task_score
-from benchmark.reporting.task_diagnostics_report import write_diagnostics
+from roboodyssey.evaluation.task_diagnostics import analyze_run, navigation_diagnostics, task_score
+from roboodyssey.reporting.task_diagnostics_report import write_diagnostics
 
 
 def pose(x):
@@ -140,7 +140,7 @@ class TaskScoreReportTests(unittest.TestCase):
                     'runtime_ground_truth': runtime, 'repair_record': {'changed': True}}}
             import numpy as np
             from types import SimpleNamespace
-            from benchmark.evaluation.task_metrics import prepare_reference, evaluate_metrics
+            from roboodyssey.evaluation.task_metrics import prepare_reference, evaluate_metrics
             reference, grid = prepare_reference(SimpleNamespace(evaluation_navigation=lambda: {
                 'blocked': np.zeros((5,30),bool), 'origin':[-1,-1], 'resolution':1, 'radius':0}), runtime, session)
             task['metric_reference']=reference

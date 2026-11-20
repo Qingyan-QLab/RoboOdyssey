@@ -14,7 +14,7 @@ def main(argv=None):
     parser.add_argument('--dataset', type=Path, required=True)
     parser.add_argument('--sequence')
     args = parser.parse_args(argv)
-    from benchmark.scenes.dataset_loader import BenchmarkDataset
+    from roboodyssey.scenes.dataset_loader import BenchmarkDataset
     dataset = BenchmarkDataset(args.dataset, sequence_id=args.sequence)
     from isaacsim import SimulationApp
     app = SimulationApp({'headless': True, 'active_gpu': args.gpu,
@@ -22,11 +22,11 @@ def main(argv=None):
     env = None
     error = None
     try:
-        from benchmark.run import _make_env_factory
-        from benchmark.runtime.request_runner import actual_state, public_observation
+        from roboodyssey.scenes.isaac_backend import make_env_factory
+        from roboodyssey.runtime.request_runner import actual_state, public_observation
         scene = dataset.scene_ids()[0]
         sessions = dataset.sessions(scene)
-        env = _make_env_factory(dataset, app)(scene, dataset.canonical_state(scene), sessions[0].session_id)
+        env = make_env_factory(dataset, app)(scene, dataset.canonical_state(scene), sessions[0].session_id)
         cache = json.loads(dataset._requests.path('runtime_scene_cache').read_text())
         before = actual_state(env, cache)
         # Visibility is diagnostic evidence, never a public model input.

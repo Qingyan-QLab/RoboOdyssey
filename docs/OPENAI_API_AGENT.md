@@ -79,8 +79,8 @@ HTTP 错误、限流、超时、无效输出、拒答和身份异常均作为 `i
 
 本仓库仅发布 SimpleNav 配置模板。API 实验需自行准备 `configs/openai_api/agent.local.json`，
 必填字段为 `model`、`log_dir`，其他可选字段及默认值见
-[`load_config` 与 `DEFAULTS`](../benchmark/agents/openai_api.py)。本机配置不纳入版本控制。
-在 `longterm_benchmark/` 执行：
+[`load_config` 与 `DEFAULTS`](../roboodyssey/agents/openai_api.py)。本机配置不纳入版本控制。
+在 `RoboOdyssey/` 执行：
 
 ```bash
 ./scripts/bootstrap.sh
@@ -104,14 +104,14 @@ API_AGENT_CONFIG="$PWD/configs/openai_api/agent.local.json"
 API_AGENT_CMD="$(./.venv/bin/python -c 'import shlex,sys; print(shlex.join(sys.argv[1:]))' \
   "$PWD/.venv/bin/python" "$PWD/examples/openai_api_agent.py" --config "$API_AGENT_CONFIG")"
 ISAACSIM_PYTHON="/path/to/isaacsim/python.sh"
-./.venv/bin/python -m benchmark validate ../OSS/scene000010/session.tar
-./.venv/bin/python -m benchmark run --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
+./.venv/bin/python -m roboodyssey validate ../OSS/scene000010/session.tar
+./.venv/bin/python -m roboodyssey run --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
 ```
 
 小预算诊断仍保留完整序列，只降低每任务步数：
 
 ```bash
-"$ISAACSIM_PYTHON" -m benchmark run \
+"$ISAACSIM_PYTHON" -m roboodyssey run \
   --dataset ../OSS/scene000010/session.tar --sequence seq_0001 \
   --agent-cmd "$API_AGENT_CMD" --max-steps 20 --agent-timeout 120 \
   --output results/gpt6_astra_api_diagnostic/benchmark
@@ -120,7 +120,7 @@ ISAACSIM_PYTHON="/path/to/isaacsim/python.sh"
 正式执行前换新的配置／输出目录、核实真实 usage 与上下文容量，再从初始状态运行：
 
 ```bash
-"$ISAACSIM_PYTHON" -m benchmark run \
+"$ISAACSIM_PYTHON" -m roboodyssey run \
   --dataset ../OSS/scene000010/session.tar --sequence seq_0001 \
   --agent-cmd "$API_AGENT_CMD" --official \
   --output results/gpt6_astra_api_official/benchmark
@@ -164,5 +164,5 @@ N=16400 时最终上下文约 656.1 万。是否能完整执行取决于目标�
 N=4100 仍约 $1707；把每段内容错误地只计一次会得到约 $23，二者不能混淆。
 上述价格均为演算假设，**不是 GPT6 Astra 官方报价或实际账单预测**。
 
-离线回归：`python -m benchmark check --core` / `python -m benchmark check`。
+离线回归：`python -m roboodyssey check --core` / `python -m roboodyssey check`。
 配套日志定义见 [OUTPUTS](OUTPUTS.md#api-agent-配套产物)。本次修改未启动真实 API 或 Isaac。

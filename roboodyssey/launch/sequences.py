@@ -105,7 +105,7 @@ def run_collection(paths, output, argv, *, dry_run=False):
             record = {'identity': data.sequence_identity(), 'dataset': str(data.root), 'exit_code': None}
             records.append(record)
             target = root / 'sequences' / safe_id(data.manifest['sequence_id'])
-            command = [sys.executable, '-m', 'benchmark', 'run', *child_arguments(argv, data.root, target.parent),
+            command = [sys.executable, '-m', 'roboodyssey', 'run', *child_arguments(argv, data.root, target.parent),
                        '--run-directory', str(target)]
             process = subprocess.Popen(command, start_new_session=True)
             try:

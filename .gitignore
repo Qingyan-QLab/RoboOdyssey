@@ -1,17 +1,34 @@
+# Simulation data, models, and generated results
 results/
 outputs/runtime_repair_validation/
-.venv/
-configs/*.local.json
-.cache/
+dataset/
 dataset_downloads/
+checkpoints/
+weights/
+
+# Python environments, caches, and build artifacts
+.venv/
+venv/
+.cache/
 __pycache__/
-*/__pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
-dataset/
-
-# Machine-specific notes and build artifacts
-*.local.*
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 build/
 dist/
+
+# Local settings and credentials
+*.local.*
+.env
+.env.*
+!.env.example
+!.env.sample
+.pypirc
+
+# Desktop metadata
+.DS_Store

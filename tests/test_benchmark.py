@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from benchmark.agents.protocol import validate_response
-from benchmark.scenes.dataset_loader import BenchmarkDataset
+from roboodyssey.agents.protocol import validate_response
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
 from examples.holoagent_benchmark_server import (
     CompositeHoloAgentPlanner,
     FsrVlnPlanner,
@@ -231,7 +231,7 @@ class DatasetTests(unittest.TestCase):
         self.assertIn("robot_base_pose", state)
 
     def test_cli_dry_run_uses_explicit_published_dataset(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         from contextlib import redirect_stdout
         from io import StringIO
 
@@ -245,7 +245,7 @@ class DatasetTests(unittest.TestCase):
         from io import StringIO
         from types import ModuleType
         from unittest.mock import patch
-        from benchmark.run import main
+        from roboodyssey.run import main
         from tests.test_contextual_requests import Agent, Env
 
         class App:
@@ -277,8 +277,11 @@ class DatasetTests(unittest.TestCase):
         with (
             patch.dict("sys.modules", modules),
             patch("signal.signal"),
-            patch("benchmark.run.AgentProcess") as process,
-            patch("benchmark.run._make_env_factory", return_value=lambda *args: env),
+            patch("roboodyssey.run.AgentProcess") as process,
+            patch(
+                "roboodyssey.scenes.isaac_backend.make_env_factory",
+                return_value=lambda *args: env,
+            ),
             redirect_stdout(StringIO()),
         ):
             process.return_value.__enter__.return_value = Agent()
@@ -296,14 +299,14 @@ class DatasetTests(unittest.TestCase):
         )
 
     def test_official_dry_run_uses_shared_validator_and_stops_on_errors(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         from contextlib import redirect_stdout
         from io import StringIO
         from unittest.mock import patch
 
         with (
             patch(
-                "benchmark.validation.dataset.validate",
+                "roboodyssey.validation.dataset.validate",
                 return_value=["invalid fixture"],
             ) as validate,
             redirect_stdout(StringIO()),
@@ -314,7 +317,7 @@ class DatasetTests(unittest.TestCase):
         validate.assert_called_once_with(self.dataset.root)
 
     def test_cli_rejects_missing_data_and_primitive_task_filters(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         from contextlib import redirect_stderr
         from io import StringIO
 

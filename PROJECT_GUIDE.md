@@ -21,6 +21,8 @@ session.tar / 解包目录 → 数据校验与序列选择 → BenchmarkDataset 
   `language.py` 校验并渲染语言。迁入代码的授权声明保存在该目录的 LICENSE 中。
 - `launch/`：配置、CPU 预检、模型服务管理、序列进程隔离、终止清理和来源记录。
 - `runtime/`：Session 连续执行、Agent 通信、2 FPS 观测、请求循环、状态与动作证据和录像。
+- `runtime/environment.py` 定义请求运行器使用的环境接口，同一序列内跨 Session 复用环境。
+- `scenes/isaac_backend.py` 管理 Isaac 应用、场景配置、相机预热和视口接入。
 - `scenes/`、`viewer/`：Isaac 场景、相机、碰撞、抓放、权威状态、显示和私有取证。
 - `evaluation/`：完整成功判定、progress_path_v3 评分、计分分母、汇总与数值诊断。
 - `reporting/`：修补审计及 HTML／CSV／JSON 展示；复用评分实现，保持原始日志只读。
@@ -43,8 +45,8 @@ session.tar / 解包目录 → 数据校验与序列选择 → BenchmarkDataset 
 ## 验证与维护
 
 ```bash
-python -m benchmark check
-python -m benchmark inventory --check
+python -m roboodyssey check
+python -m roboodyssey inventory --check
 ```
 
 CPU 测试覆盖发布数据读取与完整性、状态修补、真实历史、名称、导航与搬运评分、问答、

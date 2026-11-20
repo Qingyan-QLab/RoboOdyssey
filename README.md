@@ -1,4 +1,12 @@
-# Long-Term Indoor Benchmark
+# RoboOdyssey｜万境长行
+
+RoboOdyssey 是面向具身智能体的长期、多场景仿真与评测项目。“万境”指家庭、工业、商场、医院及室外等不同环境；“长行”强调智能体在持续执行中积累记忆、适应变化，并将经验带到后续任务。
+
+## 设立背景
+
+机器人需要在不断变化的真实场景中长期工作：导航、取物、问询等任务会跨越不同地点、时间和情境。一次性的单场景成功率难以反映它能否记住经历、理解环境变化、持续适应并完成物理执行。RoboOdyssey 因此以多环境、长时序任务为方向，建立可复现的执行、取证和评测流程，为研究长期记忆与持续适应提供基础。
+
+当前仓库实现的是以 Isaac Sim 为基础的室内长程任务评测主流程；家庭、工业、商场、医院和室外等更广场景是项目的扩展方向，不代表现有数据集已全部覆盖。
 
 基于 Isaac Sim 的长程室内任务评测框架，支持导航、物体搬运和问答。
 同一序列中的任务与 Session 连续执行，根据实际世界状态和执行经历修补请求与 GT，
@@ -9,16 +17,27 @@
 
 ## 1. 安装
 
-主机环境需要 Python 3.10+，用于数据校验、运行预检、结果分析和 CPU 测试。
+主机环境需要 Python 3.10+，用于数据校验、运行预检、结果分析和 CPU 测试。版本记录见 [变更日志](CHANGELOG.md)。
 
 ```bash
-git clone https://github.com/Qingyan-QLab/CL_NavBenchmark.git longterm_benchmark
-cd longterm_benchmark
+git clone https://github.com/Qingyan-QLab/RoboOdyssey.git RoboOdyssey
+cd RoboOdyssey
 ./scripts/bootstrap.sh
-./.venv/bin/python -m benchmark --help
+./.venv/bin/python -m roboodyssey --help
 ```
 
 安装脚本创建 `.venv` 并安装 numpy、Pillow。下文命令均从项目根目录执行。
+
+Python 调用方使用 `roboodyssey` 包名。下列核心模块可在主机 Python 中导入：
+
+```python
+import roboodyssey
+from roboodyssey.runtime.environment import RequestEnvironment
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+```
+
+已有脚本请迁移到 `roboodyssey` 导入前缀和 `python -m roboodyssey` 命令。
 
 真实任务执行还需要单独安装 Isaac Sim 及其 GPU 运行环境；模型源码、权重和推理依赖安装在各自的模型环境中。
 SimpleNav 接入需要准备源码、checkpoint 及配套的 `dataset_statistics.json`。
@@ -33,15 +52,15 @@ workspace/
 ├── OSS/
 │   └── scene000010/
 │       └── session.tar
-└── longterm_benchmark/
+└── RoboOdyssey/
 ```
 
 校验数据与主机依赖，再预览要执行的序列。这些命令均在 CPU 上运行：
 
 ```bash
-./.venv/bin/python -m benchmark validate ../OSS/scene000010/session.tar
-./.venv/bin/python -m benchmark doctor --dataset ../OSS/scene000010/session.tar
-./.venv/bin/python -m benchmark run \
+./.venv/bin/python -m roboodyssey validate ../OSS/scene000010/session.tar
+./.venv/bin/python -m roboodyssey doctor --dataset ../OSS/scene000010/session.tar
+./.venv/bin/python -m roboodyssey run \
   --dataset ../OSS/scene000010/session.tar --sequence seq_0001 --dry-run
 ```
 
@@ -87,14 +106,14 @@ cp configs/simplenav/managed.example.json configs/simplenav/managed.local.json
 先进行 CPU 预检：
 
 ```bash
-./.venv/bin/python -m benchmark preflight --config configs/simplenav/managed.local.json
+./.venv/bin/python -m roboodyssey preflight --config configs/simplenav/managed.local.json
 ```
 
 预检检查数据、资产、路径、动作统计、编码器和输出目录，不启动模型或 Isaac。
 通过后执行真实实验：
 
 ```bash
-./.venv/bin/python -m benchmark experiment --config configs/simplenav/managed.local.json --execute
+./.venv/bin/python -m roboodyssey experiment --config configs/simplenav/managed.local.json --execute
 ```
 
 实验入口保存配置与来源信息，按所选序列启动 Isaac 和 Agent，记录运行状态，结束后生成报告并清理进程。
@@ -106,13 +125,13 @@ cp configs/simplenav/managed.example.json configs/simplenav/managed.local.json
 将以下 Isaac 启动器、Agent Python 和脚本路径替换为实际路径：
 
 ```bash
-/path/to/isaacsim/python.sh -m benchmark run \
+/path/to/isaacsim/python.sh -m roboodyssey run \
   --dataset ../OSS/scene000010/session.tar --sequence seq_0001 \
   --agent-cmd "/path/to/agent/python /absolute/path/to/my_agent.py" \
   --max-steps 2000 --viewer --record-video --output results
 ```
 
-通用入口的全部参数见 `python -m benchmark run --help`。
+通用入口的全部参数见 `python -m roboodyssey run --help`。
 正式评测的 `--official` 配置要求、执行连续性和预算见 [运行与评分规则](docs/RULES.md)。
 
 ## 4. 查看结果
@@ -150,7 +169,7 @@ results/experiment_<time>_<id>/
 将下面的占位路径替换为实际目录，输出目录须尚不存在：
 
 ```bash
-./.venv/bin/python -m benchmark analyze 'results/<run-or-experiment>' \
+./.venv/bin/python -m roboodyssey analyze 'results/<run-or-experiment>' \
   --output 'results/<new-analysis>'
 ```
 
@@ -162,12 +181,17 @@ results/experiment_<time>_<id>/
 运行完整 CPU 测试：
 
 ```bash
-./.venv/bin/python -m benchmark check
+./.venv/bin/python -m roboodyssey check
 ```
 
 测试使用仓库内的合成样例，无需外部数据、模型或 Isaac Sim。
-模型配置统一放在 `configs/<model>/`，当前提供 SimpleNav 模板；适配实现与协议入口位于 `benchmark/agents/` 和 `examples/`。
+模型配置统一放在 `configs/<model>/`，当前提供 SimpleNav 模板；适配实现与协议入口位于 `roboodyssey/agents/` 和 `examples/`。
 
 [项目架构](PROJECT_GUIDE.md) · [文件清单](docs/FILE_MAP.md) · [数据格式](docs/DATA_FORMAT.md) ·
 [实验配置](docs/LAUNCH.md) · [Agent 接入](docs/AGENT_INTEGRATION.md) · [协议](docs/PROTOCOL.md) ·
 [API Agent](docs/OPENAI_API_AGENT.md) · [运行与评分规则](docs/RULES.md) · [输出说明](docs/OUTPUTS.md)
+
+## 第三方许可与资产
+
+第三方组件与外部资产的声明见 [NOTICE](NOTICE)。从生成端移入的运行时辅助代码保留原有的 [MIT 许可](roboodyssey/contracts/LICENSE)。
+Isaac Sim、外部模型与另行发布的场景数据适用各自的许可和分发条款。

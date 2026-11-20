@@ -4,8 +4,8 @@ from copy import deepcopy
 from .metrics.qa import contextual_answer_correct
 from .task_metrics import metric_totals
 
-from benchmark.contracts.contextual import distance_to_box, RuntimeContractError
-from benchmark.contracts.state import geometry
+from roboodyssey.contracts.contextual import distance_to_box, RuntimeContractError
+from roboodyssey.contracts.state import geometry
 
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SimpleNav JSONL adapter for :mod:`benchmark.run`.
+"""SimpleNav JSONL adapter for :mod:`roboodyssey.run`.
 
 The adapter keeps the benchmark protocol independent from SimpleNav.  Navigation
 requests are converted to SimpleNav waypoint queries; unsupported QA and
@@ -17,7 +17,7 @@ import numpy as np
 
 
 def _decode(value: Any) -> Any:
-    """Decode arrays produced by benchmark.runtime.session_runner._jsonable."""
+    """Decode arrays produced by roboodyssey.runtime.session_runner._jsonable."""
     if isinstance(value, dict):
         if value.get("encoding") == "base64" and {"dtype", "shape", "data"} <= value.keys():
             raw = base64.b64decode(value["data"])
@@ -40,8 +40,8 @@ def _url_parts(url: str) -> tuple[str, int]:
 # The pure state machine is importable without the SimpleNav model stack.
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from benchmark.agents.simplenav import SimpleNavAgent
-from benchmark.agents.stream import serve
+from roboodyssey.agents.simplenav import SimpleNavAgent
+from roboodyssey.agents.stream import serve
 
 
 def main() -> int:

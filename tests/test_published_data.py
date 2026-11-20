@@ -8,11 +8,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from benchmark.artifacts.layout import sha256_file, write_json
-from benchmark.data.archive import dataset_root
-from benchmark.data.frozen import select_sequences
-from benchmark.scenes.dataset_loader import BenchmarkDataset
-from benchmark.validation.dataset import validate
+from roboodyssey.artifacts.layout import sha256_file, write_json
+from roboodyssey.data.archive import dataset_root
+from roboodyssey.data.frozen import select_sequences
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+from roboodyssey.validation.dataset import validate
 from tests.frozen_data import fixture_v3, select_scenario, write_dataset
 
 
@@ -83,7 +83,7 @@ class PublishedDataTests(unittest.TestCase):
                 BenchmarkDataset(root/'sequences/seq_fixture')
 
     def test_download_accepts_published_wrapper_and_verifies_before_copy(self):
-        from benchmark.cli import _download
+        from roboodyssey.cli import _download
         from tests.test_scene_sequences import SequenceIntegrationTests
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -100,7 +100,7 @@ class PublishedDataTests(unittest.TestCase):
                     _download(archive.as_uri(), root/'downloaded', sha256_file(archive))
 
     def test_runtime_mutation_uses_published_geometry_and_actual_state(self):
-        from benchmark.contracts.requests import prepare_mutation
+        from roboodyssey.contracts.requests import prepare_mutation
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)/'data'
             c, inputs, plan = fixture_v3()
@@ -121,7 +121,7 @@ class PublishedDataTests(unittest.TestCase):
             self.assertEqual(skipped['status'], 'skipped')
 
     def test_removed_input_versions_are_rejected_before_environment_start(self):
-        from benchmark.data.frozen import read
+        from roboodyssey.data.frozen import read
         for field, value in (('schema_version', 1), ('schema_version', 4), ('layout_version', 1),
                              ('runtime_contract', {'name': 'contextual_requests', 'version': 1}),
                              ('runtime_contract', {'name': 'contextual_requests', 'version': 2})):
@@ -139,16 +139,16 @@ class PublishedDataTests(unittest.TestCase):
 
     def test_removed_import_paths_are_unavailable(self):
         import importlib
-        for name in ('benchmark.legacy.task_repair', 'benchmark.runtime.task_repair',
-                     'benchmark.runtime.sequence_runs', 'benchmark.contracts.calendar',
-                     'benchmark.evaluation.accounting', 'benchmark.reporting.legacy'):
+        for name in ('roboodyssey.legacy.task_repair', 'roboodyssey.runtime.task_repair',
+                     'roboodyssey.runtime.sequence_runs', 'roboodyssey.contracts.calendar',
+                     'roboodyssey.evaluation.accounting', 'roboodyssey.reporting.legacy'):
             with self.subTest(module=name), self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(name)
 
     def test_no_source_module_imports_generation_packages(self):
         import ast
         root = Path(__file__).resolve().parents[1]
-        for folder in ('benchmark', 'examples', 'scripts', 'tests'):
+        for folder in ('roboodyssey', 'examples', 'scripts', 'tests'):
             for path in (root/folder).rglob('*.py'):
                 tree = ast.parse(path.read_text(encoding='utf-8'))
                 for node in ast.walk(tree):

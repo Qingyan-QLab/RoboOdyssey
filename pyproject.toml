@@ -1,21 +1,22 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "longterm-indoor-benchmark"
-version = "0.1.0"
-description = "Standalone long-horizon indoor evaluation harness for Isaac Sim"
+name = "RoboOdyssey"
+version = "0.0.1"
+description = "Long-horizon embodied agent evaluation for continual adaptation across environments"
 readme = "README.md"
+license-files = ["NOTICE", "roboodyssey/contracts/LICENSE"]
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.23", "Pillow>=9.0"]
 
 [tool.setuptools.packages.find]
-include = ["benchmark*"]
+include = ["roboodyssey", "roboodyssey.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-"benchmark.agents" = ["protocol_schema.json"]
-"benchmark.contracts" = ["LICENSE"]
+"roboodyssey.agents" = ["protocol_schema.json"]
+"roboodyssey.contracts" = ["LICENSE"]

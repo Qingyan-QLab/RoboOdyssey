@@ -1,4 +1,4 @@
-from benchmark.artifacts.layout import session_file
+from roboodyssey.artifacts.layout import session_file
 """CPU contracts for versioned artifacts, CLI dispatch and process ownership."""
 from contextlib import redirect_stdout
 from copy import deepcopy
@@ -12,12 +12,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from benchmark.artifacts.layout import initialize_run, iter_sessions, session_file, read_json, write_json
-from benchmark.launch.experiment import execute, stop_owned, Progress
-from benchmark.reporting.analyze import analyze
-from benchmark.scenes.dataset_loader import BenchmarkDataset
-from benchmark.runtime.session_runner import SessionRunner
-from benchmark.evaluation.report import write_summary
+from roboodyssey.artifacts.layout import initialize_run, iter_sessions, session_file, read_json, write_json
+from roboodyssey.launch.experiment import execute, stop_owned, Progress
+from roboodyssey.reporting.analyze import analyze
+from roboodyssey.scenes.dataset_loader import BenchmarkDataset
+from roboodyssey.runtime.session_runner import SessionRunner
+from roboodyssey.evaluation.report import write_summary
 from tests.test_contextual_requests import Env, Agent
 from tests.frozen_data import fixture_v3, task, goal
 from tests.frozen_data import select_scenario
@@ -66,7 +66,7 @@ class ArtifactWorkflowTests(unittest.TestCase):
             self.assertTrue((Path(temp)/'report/index.html').exists())
 
     def test_unrecognized_artifact_version_and_escape_are_rejected(self):
-        from benchmark.artifacts.layout import manifest, local_path
+        from roboodyssey.artifacts.layout import manifest, local_path
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
             write_json(root/'manifest.json', {'schema_version':999})
@@ -75,8 +75,8 @@ class ArtifactWorkflowTests(unittest.TestCase):
 
     def test_video_artifacts_are_written_beside_their_index(self):
         from PIL import Image
-        from benchmark.runtime.request_events import RequestEvents
-        from benchmark.artifacts.layout import create_session
+        from roboodyssey.runtime.request_events import RequestEvents
+        from roboodyssey.artifacts.layout import create_session
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
             write_json(root/'manifest.json', {'artifact_schema':'benchmark_results','schema_version':2,'kind':'run',
@@ -113,12 +113,12 @@ class ExperimentWorkflowTests(unittest.TestCase):
                     root=Path(argv[argv.index('--run-directory')+1]);root.mkdir(parents=True)
                     write_json(root/'summary.json', {'evaluation_valid':True,'task_score':.5,'task_success_rate':.5,'metric_version':'progress_path_v3','metrics_complete':True})
                 return process
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance'), \
-                 patch('benchmark.launch.experiment.commands',return_value={'cwd':temp,'benchmark_argv':['fake-isaac']}), \
-                 patch('benchmark.launch.experiment.port_ready',side_effect=[False,True]), \
-                 patch('benchmark.launch.experiment.subprocess.Popen',side_effect=spawn), \
-                 patch('benchmark.launch.experiment.os.killpg') as kill:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance'), \
+                 patch('roboodyssey.launch.experiment.commands',return_value={'cwd':temp,'benchmark_argv':['fake-isaac']}), \
+                 patch('roboodyssey.launch.experiment.port_ready',side_effect=[False,True]), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen',side_effect=spawn), \
+                 patch('roboodyssey.launch.experiment.os.killpg') as kill:
                 code,root=execute(config,checked={'ok':True})
             self.assertEqual(code,0)
             self.assertEqual(read_json(root/'status.json')['cleanup'],'completed')
@@ -130,11 +130,11 @@ class ExperimentWorkflowTests(unittest.TestCase):
     def test_external_mode_does_not_spawn_or_stop_a_model(self):
         with tempfile.TemporaryDirectory() as temp:
             config=self.config(Path(temp),'external')
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance'), \
-                 patch('benchmark.launch.experiment.port_ready',return_value=False), \
-                 patch('benchmark.launch.experiment.subprocess.Popen') as spawn, \
-                 patch('benchmark.launch.experiment.stop_owned') as stop:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance'), \
+                 patch('roboodyssey.launch.experiment.port_ready',return_value=False), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen') as spawn, \
+                 patch('roboodyssey.launch.experiment.stop_owned') as stop:
                 code,root=execute(config,checked={'ok':True})
             self.assertEqual(code,1);spawn.assert_not_called()
             self.assertTrue(all(c.args==(None,) for c in stop.call_args_list))
@@ -143,11 +143,11 @@ class ExperimentWorkflowTests(unittest.TestCase):
     def test_startup_error_keeps_explicit_invalid_summary_and_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:
             process=SimpleNamespace(pid=990003,returncode=3,poll=lambda:3,wait=lambda **kw:3)
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance'), \
-                 patch('benchmark.launch.experiment.port_ready',return_value=False), \
-                 patch('benchmark.launch.experiment.subprocess.Popen',return_value=process), \
-                 patch('benchmark.launch.experiment.os.killpg') as kill:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance'), \
+                 patch('roboodyssey.launch.experiment.port_ready',return_value=False), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen',return_value=process), \
+                 patch('roboodyssey.launch.experiment.os.killpg') as kill:
                 code,root=execute(self.config(Path(temp)),checked={'ok':True})
             self.assertEqual(code,1)
             status=read_json(root/'status.json')
@@ -158,9 +158,9 @@ class ExperimentWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             def prepare(path,**kwargs):
                 (path.parent/'STOP').touch()
-            with patch('benchmark.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('benchmark.launch.experiment.capture_provenance',side_effect=prepare), \
-                 patch('benchmark.launch.experiment.subprocess.Popen') as spawn:
+            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
+                 patch('roboodyssey.launch.experiment.capture_provenance',side_effect=prepare), \
+                 patch('roboodyssey.launch.experiment.subprocess.Popen') as spawn:
                 code,root=execute(self.config(Path(temp)),checked={'ok':True})
             self.assertEqual(code,1);spawn.assert_not_called()
             self.assertEqual(read_json(root/'status.json')['phase'],'interrupted')
@@ -174,17 +174,17 @@ class ExperimentWorkflowTests(unittest.TestCase):
             if process.poll() is None:process.kill();process.wait()
 
     def test_cli_planning_cannot_execute_or_probe_the_service(self):
-        from benchmark.cli import main
-        with patch('benchmark.launch.simplenav.load_config',return_value={}), \
-             patch('benchmark.launch.simplenav.preflight',return_value={'ok':True}), \
-             patch('benchmark.launch.experiment.execute') as launch, \
-             patch('benchmark.launch.experiment.port_ready') as connect, redirect_stdout(StringIO()):
+        from roboodyssey.cli import main
+        with patch('roboodyssey.launch.simplenav.load_config',return_value={}), \
+             patch('roboodyssey.launch.simplenav.preflight',return_value={'ok':True}), \
+             patch('roboodyssey.launch.experiment.execute') as launch, \
+             patch('roboodyssey.launch.experiment.port_ready') as connect, redirect_stdout(StringIO()):
             self.assertEqual(main(['preflight','--config','config.json']),0)
             self.assertEqual(main(['experiment','--config','config.json']),0)
             launch.assert_not_called();connect.assert_not_called()
 
     def test_config_resolves_paths_and_rejects_ambiguous_model_or_sequences(self):
-        from benchmark.launch.simplenav import load_config, commands
+        from roboodyssey.launch.simplenav import load_config, commands
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);path=root/'config.json';base=self.config(root)
             base.update(dataset='relative-dataset',viewer=False,record_video=False)
@@ -202,9 +202,9 @@ class ExperimentWorkflowTests(unittest.TestCase):
 class ReusedEntryTests(unittest.TestCase):
 
     def test_shared_jsonl_reader_keeps_strict_scoring_and_tolerant_audit_errors(self):
-        from benchmark.artifacts.layout import read_json_lines
-        from benchmark.evaluation.task_diagnostics import read_lines
-        from benchmark.reporting.request_audit import lines
+        from roboodyssey.artifacts.layout import read_json_lines
+        from roboodyssey.evaluation.task_diagnostics import read_lines
+        from roboodyssey.reporting.request_audit import lines
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/'events.jsonl'
             path.write_text('{"task_id":"first"}\n\n[]\n{"partial":\n{"task_id":"last"}\n')
@@ -219,11 +219,11 @@ class ReusedEntryTests(unittest.TestCase):
                 list(read_lines(Path(temp)/'missing.jsonl'))
 
     def test_preflight_entries_emit_identical_reports_and_refuse_overwrite(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         with tempfile.TemporaryDirectory() as temp, \
-             patch('benchmark.launch.simplenav.load_config', return_value={}), \
-             patch('benchmark.launch.simplenav.preflight', return_value={'ok': True}), \
-             patch('benchmark.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
+             patch('roboodyssey.launch.simplenav.load_config', return_value={}), \
+             patch('roboodyssey.launch.simplenav.preflight', return_value={'ok': True}), \
+             patch('roboodyssey.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
             first, second = Path(temp)/'first.json', Path(temp)/'second.json'
             self.assertEqual(main(['preflight', '--config', 'unused', '--report', str(first)]), 0)
             self.assertEqual(main(['experiment', '--config', 'unused', '--report', str(second)]), 0)
@@ -233,36 +233,36 @@ class ReusedEntryTests(unittest.TestCase):
             execute.assert_not_called()
 
     def test_failed_preflight_never_starts_either_launch_mode(self):
-        from benchmark.cli import main
-        with patch('benchmark.launch.simplenav.load_config', return_value={}), \
-             patch('benchmark.launch.simplenav.preflight', return_value={'ok': False}), \
-             patch('benchmark.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
+        from roboodyssey.cli import main
+        with patch('roboodyssey.launch.simplenav.load_config', return_value={}), \
+             patch('roboodyssey.launch.simplenav.preflight', return_value={'ok': False}), \
+             patch('roboodyssey.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
             self.assertEqual(main(['experiment', '--config', 'unused', '--execute']), 1)
             self.assertEqual(main(['preflight', '--config', 'unused']), 1)
             execute.assert_not_called()
 
     def test_analysis_preserves_non_overwrite_contract(self):
-        from benchmark.cli import main
+        from roboodyssey.cli import main
         with tempfile.TemporaryDirectory() as temp, \
-             patch('benchmark.evaluation.task_diagnostics.analyze_run') as analyze_run:
+             patch('roboodyssey.evaluation.task_diagnostics.analyze_run') as analyze_run:
             with self.assertRaises(FileExistsError):
                 main(['analyze', 'unused-run', '--output', temp])
             analyze_run.assert_not_called()
 
 
     def test_file_map_is_complete_and_current(self):
-        from benchmark.validation.inventory import render, ROOT, DOCUMENT
+        from roboodyssey.validation.inventory import render, ROOT, DOCUMENT
         self.assertEqual((ROOT/DOCUMENT).read_text(encoding='utf-8'), render())
 
     def test_inventory_detects_unlisted_files_without_importing_them(self):
-        from benchmark.validation.inventory import render, DOCUMENT
+        from roboodyssey.validation.inventory import render, DOCUMENT
         with tempfile.TemporaryDirectory() as temp, \
-             patch.dict('benchmark.validation.inventory.PURPOSES', {DOCUMENT: '清单'}, clear=True):
+             patch.dict('roboodyssey.validation.inventory.PURPOSES', {DOCUMENT: '清单'}, clear=True):
             root = Path(temp)
             (root/'new.py').write_text('raise RuntimeError("must never import")')
             with self.assertRaisesRegex(ValueError, 'new.py'):
                 render(root)
-            with patch.dict('benchmark.validation.inventory.PURPOSES', {'new.py': '静态检查示例'}):
+            with patch.dict('roboodyssey.validation.inventory.PURPOSES', {'new.py': '静态检查示例'}):
                 first = render(root)
                 (root/'results').mkdir()
                 (root/'results/unlisted.py').write_text('invalid Python!!!')

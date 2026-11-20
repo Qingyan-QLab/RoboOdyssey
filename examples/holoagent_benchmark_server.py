@@ -54,7 +54,7 @@ except ModuleNotFoundError:  # direct ``python examples/<script>.py`` launch
     )
 
 
-from benchmark.agents.protocol import PROTOCOL_VERSION
+from roboodyssey.agents.protocol import PROTOCOL_VERSION
 
 
 def _navigation_request(payload):

@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] in commands:
         module, options, _ = commands[raw[0]]
         return import_module('.' + module, __package__).main(raw[1:], **options)
-    parser = argparse.ArgumentParser(prog="python -m benchmark")
+    parser = argparse.ArgumentParser(prog="python -m roboodyssey")
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name, (_, _, help_text) in commands.items():
         subparsers.add_parser(name, help=help_text)

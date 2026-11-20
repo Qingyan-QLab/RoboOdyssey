@@ -83,7 +83,7 @@ def commands(config):
              '--url',config['url'],'--history-frames',str(config['history_frames']),
              '--collision-reset-threshold',str(config['collision_reset_threshold'])]
     if config.get('unnorm_key'): agent += ['--unnorm-key',config['unnorm_key']]
-    run = [config['isaac_python'],'-m','benchmark.run','--dataset',config['dataset'],
+    run = [config['isaac_python'],'-m','roboodyssey.run','--dataset',config['dataset'],
            '--agent-cmd',shlex.join(agent),'--output',config['output'],'--max-steps',str(config['max_steps']),
            '--agent-timeout',str(config['agent_timeout'])]
     if config['viewer']: run += ['--viewer']

@@ -23,8 +23,8 @@ from typing import Any
 from urllib import error, request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from benchmark.agents.stream import serve
-from benchmark.agents.protocol import ACTION_TYPES, PROTOCOL_VERSION
+from roboodyssey.agents.stream import serve
+from roboodyssey.agents.protocol import ACTION_TYPES, PROTOCOL_VERSION
 
 
 

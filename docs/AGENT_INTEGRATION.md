@@ -58,7 +58,7 @@ SimpleNav 仅支持导航，不直接预测抓放或开关门；问答／操作�
 ## API 视觉 Agent
 
 `examples/openai_api_agent.py --config /absolute/path/to/agent.local.json` 是直接调用 API 的 v5
-Agent 入口，使用 `benchmark/agents/openai_api.py` 和 Responses 响应链。
+Agent 入口，使用 `roboodyssey/agents/openai_api.py` 和 Responses 响应链。
 序列首轮上传 prompt 和初始机器人状态，每轮仅上传当前 RGB；任务文本变更时追加，
 不重传历史帧、不维护显式记忆。模型自行依靠连续会话记忆，默认仅保留最小执行反馈。
 本仓库仅发布 SimpleNav 配置模板；API 实验使用自行准备的 `configs/openai_api/agent.local.json`，不传给 SimpleNav 实验管理器。
@@ -85,7 +85,7 @@ pick 只能作用于发布数据中冻结的 pick/place candidate，且对象必
 
 ## 新增模型适配
 
-SimpleNav 接口继续保留：`benchmark/agents/simplenav.py` 实现模型状态与动作转换，
+SimpleNav 接口继续保留：`roboodyssey/agents/simplenav.py` 实现模型状态与动作转换，
 `examples/simplenav_agent.py` 为 JSONL 入口，`configs/simplenav/*.example.json` 配置 managed／external 服务。
 模型配置统一放在 `configs/<model>/`；当前仅保留 SimpleNav 共享模板，本机配置使用 `*.local.json`，不提交版本控制。
 后续模型采用同样的实现／入口／配置分层，并复用 `agents/stream.py` 持续接收观测。

@@ -1,5 +1,5 @@
 from tests.frozen_data import result_session
-from benchmark.artifacts.layout import session_file
+from roboodyssey.artifacts.layout import session_file
 """CPU contract tests for partial credit, route costs and immutable references."""
 from copy import deepcopy
 import json
@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import unittest
 import numpy as np
 
-from benchmark.evaluation.navigation import GridDistance, OrderedRoute
-from benchmark.evaluation.task_metrics import (
+from roboodyssey.evaluation.navigation import GridDistance, OrderedRoute
+from roboodyssey.evaluation.task_metrics import (
     METRIC_VERSION,
     evaluate_metrics, navigation_metric, metric_totals, prepare_reference, load_reference,
 )
@@ -117,7 +117,7 @@ class PathMetricTests(unittest.TestCase):
                 load_reference(reference,tmp)
 
     def test_environment_snapshot_matches_open_door_collision_rules_without_isaac(self):
-        from benchmark.scenes.isaac_env import IsaacVLNEnv
+        from roboodyssey.scenes.isaac_env import IsaacVLNEnv
         env=IsaacVLNEnv.__new__(IsaacVLNEnv)
         env._static_base=np.zeros((6,8),bool);env._static=env._static_base.copy()
         env._dynamic=np.zeros((6,8),bool);env._dynamic[:,4]=True
@@ -207,7 +207,7 @@ class SemanticMetricTests(unittest.TestCase):
 class ReproducibilityTests(unittest.TestCase):
 
     def test_historical_timing_reports_spans_without_inventing_components(self):
-        from benchmark.evaluation.rescore import historical_measurements
+        from roboodyssey.evaluation.rescore import historical_measurements
         measured=historical_measurements([
             {'event':'task_start','monotonic_ns':1_000_000_000},
             {'event':'task_complete','monotonic_ns':4_000_000_000}],
@@ -220,8 +220,8 @@ class ReproducibilityTests(unittest.TestCase):
         self.assertIsNone(missing['recorded_agent_roundtrip_seconds'])
 
     def test_saved_runtime_score_recomputes_offline_and_detects_missing_or_tampered_grid(self):
-        from benchmark.evaluation.task_diagnostics import analyze_run
-        from benchmark.reporting.task_diagnostics_report import write_diagnostics
+        from roboodyssey.evaluation.task_diagnostics import analyze_run
+        from roboodyssey.reporting.task_diagnostics_report import write_diagnostics
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/'run';session = result_session(root)
             gt=truth(15.5);actions=trajectory(5.5,10.5)
@@ -283,7 +283,7 @@ class ReproducibilityTests(unittest.TestCase):
             self.assertEqual(report['tasks'][0]['metric_version'],METRIC_VERSION)
 
     def test_sequence_aggregation_does_not_mix_metric_versions_or_hide_missing_scores(self):
-        from benchmark.launch.sequences import aggregate_runs
+        from roboodyssey.launch.sequences import aggregate_runs
         good={'exit_code':0,'summary':{'evaluation_valid':True,'metric_version':METRIC_VERSION,
             'metrics_complete':True,'task_score':.4,'task_success_rate':.2}}
         total=aggregate_runs([good])
