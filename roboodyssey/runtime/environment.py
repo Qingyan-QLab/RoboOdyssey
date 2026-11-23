@@ -1,10 +1,10 @@
 """Simulator interface for the v5 request runner."""
 from __future__ import annotations
 
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, Union
 
 State = dict[str, Any]
-Action = str | dict[str, Any]
+Action = Union[str, dict[str, Any]]
 
 
 class RequestEnvironment(Protocol):

@@ -14,8 +14,8 @@ def lines(path):
 
 
 def write_request_audit(root, output=None):
-    root = Path(root)
-    output = Path(output) if output is not None else reports_dir(root)
+    root = Path(root).resolve()
+    output = Path(output).resolve() if output is not None else reports_dir(root)
     rows, errors, mutations = [], [], []
     for scene_id, sid, path in iter_sessions(root):
         def records(name):

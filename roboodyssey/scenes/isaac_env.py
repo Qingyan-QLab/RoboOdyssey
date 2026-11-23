@@ -60,7 +60,7 @@ class IsaacVLNEnv:
     """A deterministic high-level avatar environment backed by Isaac Sim."""
 
     def __init__(self, scene_asset: str | Path, config: EnvConfig | None = None,
-                 holoagent_sensor_topics: Any | None = None):
+                 sensor_bridge_factory: Any | None = None, sensor_contract: Any | None = None):
         import numpy as np
         import omni.usd
         from isaacsim.sensors.camera import Camera
@@ -122,7 +122,7 @@ class IsaacVLNEnv:
         self._last_rgb = None
         self._last_depth = None
         self._last_action_feedback: dict[str, Any] | None = None
-        self._holoagent_sensor_bridge = None
+        self._sensor_bridge = None
         self._overview_camera_path = "/World/LongTermBenchmark/OverviewCamera"
         self._overview_marker_path = "/World/LongTermBenchmark/OverviewAgent"
         self._overview_camera = None
@@ -136,7 +136,7 @@ class IsaacVLNEnv:
             frequency=-1,
         )
         # Isaac Sim's Camera initializes an RGB annotator by default.  The
-        # optional HoloAgent bridge creates its own RGB-D render product, so
+        # optional sensor bridge creates its own RGB-D render product, so
         # the benchmark observation protocol does not need to carry depth.
         self.camera.initialize(attach_rgb_annotator=True)
         try:
@@ -145,10 +145,9 @@ class IsaacVLNEnv:
             pass
         self._configure_camera_intrinsics()
         self._configure_scene_rendering()
-        if holoagent_sensor_topics is not None:
-            from .holoagent_sensor_bridge import IsaacSimHoloAgentSensorBridge
-            self._holoagent_sensor_bridge = IsaacSimHoloAgentSensorBridge(
-                self.camera, self.config.resolution, holoagent_sensor_topics)
+        if sensor_bridge_factory is not None:
+            self._sensor_bridge = sensor_bridge_factory(
+                self.camera, self.config.resolution, sensor_contract)
 
     def attach_overview_window(self, window: Any) -> None:
         """Keep a strong reference so Kit does not garbage-collect the viewport."""
@@ -1207,8 +1206,8 @@ class IsaacVLNEnv:
             "action_feedback": deepcopy(self._last_action_feedback),
             "reset_applied": bool(self._reset_applied),
         }
-        if self._holoagent_sensor_bridge is not None:
-            self._holoagent_sensor_bridge.publish_pose(self.get_camera_pose())
+        if self._sensor_bridge is not None:
+            self._sensor_bridge.publish_pose(self.get_camera_pose())
         return result
 
     def capture_observation(self) -> dict[str, Any]:
@@ -1267,7 +1266,7 @@ class IsaacVLNEnv:
     def close(self) -> None:
         self._overview_window = None
         errors = []
-        for attribute in ('_review_overview_sensor', '_holoagent_sensor_bridge', 'camera'):
+        for attribute in ('_review_overview_sensor', '_sensor_bridge', 'camera'):
             resource = getattr(self, attribute, None)
             if resource is not None:
                 try:

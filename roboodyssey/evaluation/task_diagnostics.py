@@ -3,7 +3,7 @@
 No simulator, model, offline reference path, or regenerated runtime request is
 used here. Distances describe geometry; they do not establish recognition.
 """
-from ..agents.protocol import required_action_name as action_name
+from ..interaction.protocol import required_action_name as action_name
 from collections import Counter, defaultdict
 from copy import deepcopy
 import json
@@ -305,13 +305,13 @@ def explain_result(row):
     reason = row['reason_code']
     messages = {
         'success': '完整任务及全部必要目标按运行时 GT 达标。',
-        'simplenav_unsupported_qa': 'SimpleNav 返回不支持问答，未提供合格回答；任务已下发，计 0 分。',
-        'simplenav_unsupported_manipulation': 'SimpleNav 返回不支持搬运，未完成规定的放置与释放；任务已下发，计 0 分。',
         'already_satisfied': '下发前整个任务已经满足，未下发，N/A，不进入分母。',
         'unavailable': '前序失败使所需真实经历无法成立，修补后仍不可评测；未下发，N/A，不进入分母。',
         'step_limit': f'达到本次动作上限（{row["steps"]} 步），未完成完整任务。',
     }
-    text = messages.get(reason, str(reason))
+    text = ('Agent 返回不支持此能力；任务已下发，按评测规则计分。'
+            if isinstance(reason, str) and 'unsupported' in reason
+            else messages.get(reason, str(reason)))
     nav = row.get('navigation')
     if nav and row['success'] is False:
         active = next((g for g in nav['goals'] if not g['ordered_success']), None)

@@ -18,7 +18,7 @@ def repository(root):
         result = subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True, timeout=15)
         return result.stdout.strip() if result.returncode == 0 else None
     files = {}
-    for folder in ('roboodyssey', 'benchmark', 'scripts', 'examples', 'builder', 'configs', 'deployment', 'NavVLAeval'):
+    for folder in ('roboodyssey', 'scripts'):
         for path in sorted((root/folder).rglob('*')):
             if path.is_file() and path.suffix in {'.py', '.sh', '.json', '.toml'} and '__pycache__' not in path.parts and '.local.' not in path.name:
                 files[path.relative_to(root).as_posix()] = sha256(path)
@@ -26,7 +26,8 @@ def repository(root):
             'status': git('status', '--porcelain'), 'source_sha256': files}
 
 
-def capture_provenance(path, *, dataset_root=None, model_root=None, checkpoint=None, python_executables=()):
+def capture_provenance(path, *, dataset_root=None, model_root=None, checkpoint=None,
+                       python_executables=(), source_roots=()):
     value = {'schema_version': 1, 'python': sys.executable, 'python_version': sys.version,
              'platform': platform.platform(), 'packages': {d.metadata['Name']: d.version for d in distributions() if d.metadata['Name']},
              'repositories': [repository(ROOT)], 'external_environments': []}
@@ -40,6 +41,8 @@ def capture_provenance(path, *, dataset_root=None, model_root=None, checkpoint=N
             value['dataset']['archive'] = {'path': str(source), 'sha256': sha256(source)}
     if model_root:
         value['repositories'].append(repository(model_root))
+    for source_root in source_roots:
+        value['repositories'].append(repository(source_root))
     if checkpoint:
         checkpoint = Path(checkpoint)
         files = [checkpoint] if checkpoint.is_file() else sorted(p for p in checkpoint.rglob('*') if p.is_file())

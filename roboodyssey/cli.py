@@ -67,8 +67,6 @@ def main(argv: list[str] | None = None) -> int:
     commands = {
         'run': ('run', {}, 'run the benchmark'),
         'validate': ('validation.dataset', {}, 'CPU dataset/archive/collection validation'),
-        'preflight': ('launch.simplenav', {'mode': 'preflight'}, 'CPU-only SimpleNav experiment checks'),
-        'experiment': ('launch.simplenav', {'mode': 'experiment'}, 'prepare or explicitly execute an experiment'),
         'analyze': ('reporting.analyze', {}, 'CPU repair, score and reset reports'),
         'inventory': ('validation.inventory', {}, 'generate/check the complete source file map'),
     }
@@ -92,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument('--core', action='store_true', help='fast subset; use the default for complete integration checks')
     args = parser.parse_args(raw)
     if args.command == 'check':
-        return subprocess.run([sys.executable, str(ROOT/'scripts/check_simplenav_cpu.py'), *(['--core'] if args.core else [])]).returncode
+        return subprocess.run([sys.executable, str(ROOT/'scripts/check_cpu.py'), *(['--core'] if args.core else [])]).returncode
     if args.command == "doctor":
         return _doctor(args.dataset, args.require_isaac)
     if args.command == "download":

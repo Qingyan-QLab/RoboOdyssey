@@ -3,15 +3,19 @@ set -euo pipefail
 
 BENCHMARK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ -n "${DATASET_DIR:-}" ]]; then
+HAS_SCENE_SOURCE=0
+for arg in "$@"; do
+  case "${arg}" in --scene-source|--scene-source=*) HAS_SCENE_SOURCE=1 ;; esac
+done
+if [[ -n "${DATASET_DIR:-}" && "${HAS_SCENE_SOURCE}" == 0 ]]; then
   set -- --dataset "${DATASET_DIR}" "$@"
 fi
-HAS_DATASET=0
+HAS_INPUT=0
 for arg in "$@"; do
-  case "${arg}" in --dataset|--dataset=*|-h|--help) HAS_DATASET=1 ;; esac
+  case "${arg}" in --dataset|--dataset=*|--scene-source|--scene-source=*|-h|--help) HAS_INPUT=1 ;; esac
 done
-if [[ "${HAS_DATASET}" == 0 ]]; then
-  echo "Provide --dataset PATH or DATASET_DIR; datasets are supplied externally." >&2
+if [[ "${HAS_INPUT}" == 0 ]]; then
+  echo "Provide --dataset PATH, DATASET_DIR, or --scene-source PATH with --session-source PATH." >&2
   exit 2
 fi
 if [[ -z "${ISAACSIM_ROOT:-}" ]]; then
@@ -60,21 +64,18 @@ fi
 # Isaac Sim ships its own ROS 2 Jazzy runtime.  The ROS bridge extension is
 # loaded inside the Isaac Sim Python process, so these variables must be set
 # before Kit starts; setting them only in the HoloAgent terminal is not enough.
-for arg in "$@"; do
-  if [[ "$arg" == "--holoagent-sensors" ]]; then
+if [[ "${BENCHMARK_ROS_BRIDGE:-0}" == 1 ]]; then
     export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
     export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
     ROS2_CORE_LIB="${ISAACSIM_ROOT}/exts/isaacsim.ros2.core/${ROS_DISTRO}/lib"
     if [[ -d "${ROS2_CORE_LIB}" ]]; then
       export LD_LIBRARY_PATH="${ROS2_CORE_LIB}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     fi
-    break
-  fi
-done
+fi
 
 cd "${BENCHMARK_ROOT}"
-export PYTHONPATH="${ISAACSIM_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH="${ISAACSIM_ROOT}${BENCHMARK_PLUGIN_PATH:+:${BENCHMARK_PLUGIN_PATH}}${PYTHONPATH:+:${PYTHONPATH}}"
+if [[ -n "${AGENT_CMD:-}" ]]; then set -- --agent-cmd "$AGENT_CMD" "$@"; fi
 exec "${PYTHON_BIN}" -m roboodyssey.run \
-  --agent-cmd "${AGENT_CMD:-python3 ${BENCHMARK_ROOT}/examples/random_agent.py}" \
   --output "${OUTPUT_DIR:-${BENCHMARK_ROOT}/results}" \
   "${@}"

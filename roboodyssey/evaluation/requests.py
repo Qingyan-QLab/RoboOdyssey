@@ -1,5 +1,5 @@
 """Complete-request scoring from actual goal, action and observation evidence."""
-from ..agents.protocol import action_name
+from ..interaction.protocol import action_name
 from copy import deepcopy
 from .metrics.qa import contextual_answer_correct
 from .task_metrics import metric_totals
