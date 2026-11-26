@@ -13,7 +13,6 @@ import unittest
 from unittest.mock import patch
 
 from roboodyssey.artifacts.layout import initialize_run, iter_sessions, session_file, read_json, write_json
-from roboodyssey.launch.experiment import execute, stop_owned, Progress
 from roboodyssey.reporting.analyze import analyze
 from roboodyssey.scenes.dataset_loader import BenchmarkDataset
 from roboodyssey.runtime.session_runner import SessionRunner
@@ -51,10 +50,6 @@ class ArtifactWorkflowTests(unittest.TestCase):
                     report = analyze(output, root/'analysis')
                     self.assertTrue(report['ok'], report)
                     self.assertTrue((root/'analysis/scores/report.html').exists())
-                    progress = Progress()
-                    once = deepcopy(progress.read(output))
-                    self.assertEqual(once, progress.read(output))
-                    self.assertEqual(once['completed_tasks'], 1)
 
     def test_collection_reports_include_missing_runs_as_errors(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -94,109 +89,6 @@ class ArtifactWorkflowTests(unittest.TestCase):
             self.assertFalse((folder/'review.mp4').exists())
 
 
-class ExperimentWorkflowTests(unittest.TestCase):
-    def config(self, root, mode='managed'):
-        return {'output':str(root),'dataset':'dataset','simplenav_root':str(root), 'checkpoint':'checkpoint',
-            'agent_python':sys.executable,'isaac_python':'not-a-real-isaac-executable','url':'ws://127.0.0.1:12345',
-            'model_service':{'mode':mode,'gpu_uuid':'GPU-test','startup_timeout':1},'environment':{},'auto_analyze':False}
-
-    def dataset(self):
-        return SimpleNamespace(root=Path('dataset'), sequence_identity=lambda:{'sequence_id':'A'})
-
-    def test_managed_success_uses_config_and_reaps_only_owned_groups(self):
-        with tempfile.TemporaryDirectory() as temp:
-            config=self.config(Path(temp)); processes=[]
-            def spawn(argv, **kwargs):
-                process=SimpleNamespace(pid=990001+len(processes),returncode=0, poll=lambda:0,wait=lambda **kw:0)
-                processes.append((argv,kwargs,process))
-                if '--run-directory' in argv:
-                    root=Path(argv[argv.index('--run-directory')+1]);root.mkdir(parents=True)
-                    write_json(root/'summary.json', {'evaluation_valid':True,'task_score':.5,'task_success_rate':.5,'metric_version':'progress_path_v3','metrics_complete':True})
-                return process
-            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('roboodyssey.launch.experiment.capture_provenance'), \
-                 patch('roboodyssey.launch.experiment.commands',return_value={'cwd':temp,'benchmark_argv':['fake-isaac']}), \
-                 patch('roboodyssey.launch.experiment.port_ready',side_effect=[False,True]), \
-                 patch('roboodyssey.launch.experiment.subprocess.Popen',side_effect=spawn), \
-                 patch('roboodyssey.launch.experiment.os.killpg') as kill:
-                code,root=execute(config,checked={'ok':True})
-            self.assertEqual(code,0)
-            self.assertEqual(read_json(root/'status.json')['cleanup'],'completed')
-            self.assertEqual(read_json(root/'summary.json')['task_score'],.5)
-            self.assertEqual(processes[0][1]['env']['CUDA_VISIBLE_DEVICES'],'GPU-test')
-            self.assertIn('--run-directory',processes[1][0])
-            self.assertEqual({call.args[0] for call in kill.call_args_list},{p.pid for _,_,p in processes})
-
-    def test_external_mode_does_not_spawn_or_stop_a_model(self):
-        with tempfile.TemporaryDirectory() as temp:
-            config=self.config(Path(temp),'external')
-            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('roboodyssey.launch.experiment.capture_provenance'), \
-                 patch('roboodyssey.launch.experiment.port_ready',return_value=False), \
-                 patch('roboodyssey.launch.experiment.subprocess.Popen') as spawn, \
-                 patch('roboodyssey.launch.experiment.stop_owned') as stop:
-                code,root=execute(config,checked={'ok':True})
-            self.assertEqual(code,1);spawn.assert_not_called()
-            self.assertTrue(all(c.args==(None,) for c in stop.call_args_list))
-            self.assertFalse(read_json(root/'summary.json')['evaluation_valid'])
-
-    def test_startup_error_keeps_explicit_invalid_summary_and_cleanup(self):
-        with tempfile.TemporaryDirectory() as temp:
-            process=SimpleNamespace(pid=990003,returncode=3,poll=lambda:3,wait=lambda **kw:3)
-            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('roboodyssey.launch.experiment.capture_provenance'), \
-                 patch('roboodyssey.launch.experiment.port_ready',return_value=False), \
-                 patch('roboodyssey.launch.experiment.subprocess.Popen',return_value=process), \
-                 patch('roboodyssey.launch.experiment.os.killpg') as kill:
-                code,root=execute(self.config(Path(temp)),checked={'ok':True})
-            self.assertEqual(code,1)
-            status=read_json(root/'status.json')
-            self.assertIn('startup',status['error']);self.assertEqual(status['cleanup'],'completed')
-            self.assertEqual(kill.call_args.args[0],990003)
-
-    def test_stop_during_preparation_never_launches_a_child(self):
-        with tempfile.TemporaryDirectory() as temp:
-            def prepare(path,**kwargs):
-                (path.parent/'STOP').touch()
-            with patch('roboodyssey.launch.experiment.selected_datasets',return_value=[self.dataset()]), \
-                 patch('roboodyssey.launch.experiment.capture_provenance',side_effect=prepare), \
-                 patch('roboodyssey.launch.experiment.subprocess.Popen') as spawn:
-                code,root=execute(self.config(Path(temp)),checked={'ok':True})
-            self.assertEqual(code,1);spawn.assert_not_called()
-            self.assertEqual(read_json(root/'status.json')['phase'],'interrupted')
-
-    def test_real_cpu_child_cleanup(self):
-        process=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'],start_new_session=True)
-        try:
-            stop_owned(process,timeout=2)
-            self.assertIsNotNone(process.poll())
-        finally:
-            if process.poll() is None:process.kill();process.wait()
-
-    def test_cli_planning_cannot_execute_or_probe_the_service(self):
-        from roboodyssey.cli import main
-        with patch('roboodyssey.launch.simplenav.load_config',return_value={}), \
-             patch('roboodyssey.launch.simplenav.preflight',return_value={'ok':True}), \
-             patch('roboodyssey.launch.experiment.execute') as launch, \
-             patch('roboodyssey.launch.experiment.port_ready') as connect, redirect_stdout(StringIO()):
-            self.assertEqual(main(['preflight','--config','config.json']),0)
-            self.assertEqual(main(['experiment','--config','config.json']),0)
-            launch.assert_not_called();connect.assert_not_called()
-
-    def test_config_resolves_paths_and_rejects_ambiguous_model_or_sequences(self):
-        from roboodyssey.launch.simplenav import load_config, commands
-        with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp);path=root/'config.json';base=self.config(root)
-            base.update(dataset='relative-dataset',viewer=False,record_video=False)
-            write_json(path,base)
-            config=load_config(path)
-            self.assertEqual(config['dataset'],str(root/'relative-dataset'))
-            self.assertNotIn('--viewer',commands(config)['benchmark_argv'])
-            for update in ({'sequences':['A','A']}, {'sequences':['A'],'all_sequences':True},
-                           {'model_service':{'mode':'managed'}},
-                           {'model_service':{'mode':'managed','gpu_uuid':'GPU-test','extra_args':['--port=1']}}):
-                write_json(path,{**base,**update})
-                with self.assertRaises(ValueError):load_config(path)
 
 
 class ReusedEntryTests(unittest.TestCase):
@@ -218,28 +110,7 @@ class ReusedEntryTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 list(read_lines(Path(temp)/'missing.jsonl'))
 
-    def test_preflight_entries_emit_identical_reports_and_refuse_overwrite(self):
-        from roboodyssey.cli import main
-        with tempfile.TemporaryDirectory() as temp, \
-             patch('roboodyssey.launch.simplenav.load_config', return_value={}), \
-             patch('roboodyssey.launch.simplenav.preflight', return_value={'ok': True}), \
-             patch('roboodyssey.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
-            first, second = Path(temp)/'first.json', Path(temp)/'second.json'
-            self.assertEqual(main(['preflight', '--config', 'unused', '--report', str(first)]), 0)
-            self.assertEqual(main(['experiment', '--config', 'unused', '--report', str(second)]), 0)
-            self.assertEqual(first.read_bytes(), second.read_bytes())
-            with self.assertRaises(FileExistsError):
-                main(['experiment', '--config', 'unused', '--report', str(first), '--execute'])
-            execute.assert_not_called()
 
-    def test_failed_preflight_never_starts_either_launch_mode(self):
-        from roboodyssey.cli import main
-        with patch('roboodyssey.launch.simplenav.load_config', return_value={}), \
-             patch('roboodyssey.launch.simplenav.preflight', return_value={'ok': False}), \
-             patch('roboodyssey.launch.experiment.execute') as execute, redirect_stdout(StringIO()):
-            self.assertEqual(main(['experiment', '--config', 'unused', '--execute']), 1)
-            self.assertEqual(main(['preflight', '--config', 'unused']), 1)
-            execute.assert_not_called()
 
     def test_analysis_preserves_non_overwrite_contract(self):
         from roboodyssey.cli import main

@@ -12,7 +12,7 @@ class NoAcceleratorImports(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {
                 'torch', 'isaacsim', 'omni', 'carb', 'cupy', 'tensorflow', 'jax',
                 'CL_task_builder', 'CL_session_builder', 'roboodyssey_datasynth',
-                'odyssey_task_builder', 'synthesis', 'oracle_policies'}:
+                'odyssey_task_builder', 'synthesis', 'oracle_policies', 'agent_integrations'}:
             raise RuntimeError('CPU validation forbids importing '+fullname)
         return None
 
@@ -23,14 +23,14 @@ def installed_smoke():
     import importlib.resources
     import json
     import numpy as np
-    from ..agents.protocol import validate_response
+    from ..interaction.protocol import validate_response
     from ..evaluation.navigation import GridDistance
     from ..data import CURRENT_FORMAT
     for module in ('contracts.planning', 'contracts.snapshots', 'runtime.policy',
                    'runtime.capture', 'scenes.camera', 'scenes.isaac_env',
-                   'agents.simplenav_cli', 'agents.openai_api_cli', 'run'):
+                   'interaction.agent_api', 'interaction.stream', 'data.sources', 'data.api', 'run'):
         importlib.import_module('roboodyssey.'+module)
-    schema = importlib.resources.files('roboodyssey.agents').joinpath('protocol_schema.json')
+    schema = importlib.resources.files('roboodyssey.interaction').joinpath('protocol_schema.json')
     json.loads(schema.read_text())
     if CURRENT_FORMAT['layout_version'] != 2:
         raise AssertionError('unexpected current layout')
@@ -58,7 +58,7 @@ def main(argv=None):
         sys.path.insert(0, str(root))
         if args.core:
             patterns = ('test_benchmark.py', 'test_task_diagnostics.py', 'test_observations.py',
-                        'test_evaluation_metrics.py', 'test_transfer_metrics.py', 'test_openai_api_agent.py')
+                        'test_evaluation_metrics.py', 'test_transfer_metrics.py', 'test_contextual_requests.py')
             suite = unittest.TestSuite(unittest.defaultTestLoader.discover(str(root/'tests'), pattern=p)
                                        for p in patterns)
             print('Core suite only; omit --core for complete source regression tests.', flush=True)

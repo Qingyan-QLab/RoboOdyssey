@@ -119,5 +119,6 @@
     "Synthetic short-sequence validation; no production throughput claim.",
     "No old-format migration or automatic relabeling of undeclared body identities."
   ],
-  "repository": "RoboOdyssey"
+  "repository": "RoboOdyssey",
+  "scope": "Historical validation of original PR #5 (aed30d5), before PR #4 adaptation. This is not evidence for the integrated tree."
 }

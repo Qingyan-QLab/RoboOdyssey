@@ -1,13 +1,13 @@
 # 通用实验批次与比较
 
 `python -m roboodyssey batch` 接受任意兼容 JSONL 协议的 Agent 命令。每条 job 选择一个冻结 sequence；
-CPU 规划不启动模型/Isaac、不探测端口。外部模型服务由调用方管理，原 SimpleNav 托管服务入口继续保留。
+CPU 规划不启动模型/Isaac、不探测端口。外部模型服务由调用方管理，SimpleNav 托管服务入口位于外部 Agent Integrations 仓库。
 
 ```json
 {
   "schema_version": 1,
   "python": "/path/to/isaac/python.sh",
-  "agent_argv": ["/path/to/host/python", "-m", "roboodyssey.agents.openai_api_cli", "--config", "/data/api.json"],
+  "agent_argv": ["/path/to/host/python", "/path/to/agent.py"],
   "jobs": [
     {"id": "sequence_A_seed_1", "dataset": "/data/collection", "sequence_id": "sequence_A"}
   ],

@@ -1,37 +1,32 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Structure and Dependency Boundaries
 
-- `roboodyssey/` contains the evaluation runtime: Protocol v1 handling, dataset and scene loading, Isaac Sim integration, session execution, metrics, and reports.
-- `examples/` contains agent adapters and the random smoke agent; keep external-agent integration here unless a protocol capability is shared by all agents.
-- `generation/` is an optional Actor SDG entry point and is separate from benchmark execution.
-- `scripts/` provides environment checks, dataset validation, checksums, smoke runs, and result analysis. `run_benchmark.sh` is the Isaac Sim launcher.
-- `tests/` contains CPU-only unit tests, `docs/` documents protocols and metrics, and `dataset/` holds example scene packages. Runtime output belongs in ignored `results/` directories.
+- `roboodyssey/` is the reusable core: Scene/Session loading, environment, interaction protocol, scoring references, evaluation, artifacts, and reports. It must not import `agent_integrations` or `synthesis`.
+- Evaluated Agent integrations live in the separate `https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations` repository.
+- Data synthesis and executable Oracle policies live in `https://github.com/Qingyan-QLab/RoboOdyssey-DataSynth`.
+- `docs/SCENE_SESSION.md` defines standalone Scene/Session directory or tar inputs; `docs/DATA_FORMAT.md` defines existing published archives. `tests/` holds CPU-only regression cases.
+- Runtime output belongs in ignored `results/`; external data, model sources, and weights are supplied separately.
 
-## Build, Test, and Development Commands
+## Development and Verification
 
-Set up a local environment with `./scripts/bootstrap.sh` and activate `.venv`. Run these checks before submitting changes:
+Use Python 3.10+ and work from the repository root. Run these checks before submitting a change:
 
 ```bash
+./scripts/bootstrap.sh
 python3 -m roboodyssey check
 python3 -m roboodyssey inventory --check
-python3 -m roboodyssey run --dataset /path/to/sequence --dry-run
+python3 -m roboodyssey run --dataset /path/to/session.tar --dry-run
 ```
 
-For an Isaac Sim smoke run, set `ISAACSIM_ROOT` and run `./run_benchmark.sh --dataset /path/to/sequence`; use `--viewer` only with a graphical environment. Validate datasets with `python3 -m roboodyssey validate /path/to/sequence`.
+The final dry-run needs a real external dataset. For a standalone bundle use `--scene-source <directory-or-tar> --session-source <directory-or-tar> --dry-run`. Isaac Sim execution uses its `python.sh` or `run_benchmark.sh`. Model environments are separate.
 
-## Coding Style & Naming Conventions
+## Coding and Testing
 
-Use Python 3.10+ with four-space indentation, `snake_case` for functions, variables, and modules, `PascalCase` for classes, and `UPPER_SNAKE_CASE` constants. Keep protocol payloads and dataset schemas explicit and JSON-serializable. No formatter or linter is configured, so review imports and changed lines manually. Shell scripts should remain Bash-compatible and use strict mode (`set -euo pipefail`).
+Use four-space Python indentation, `snake_case` names, explicit JSON-serializable contracts, and Bash strict mode. Add focused `unittest` coverage for loaders, protocol, metric, and session changes without importing Isaac Sim or a model stack. Keep `docs/FILE_MAP.md` current through `python3 -m roboodyssey inventory`; add purposes for new files in `roboodyssey/validation/inventory.py`.
 
-## Testing Guidelines
+Preserve result schema, input hashes, public/private Agent boundaries, and sequence continuity when changing runtime code. Check CPU behavior first, then run an Isaac smoke case when that environment is available. Document any change to Scene/Session or Agent contracts in `docs/` and the relevant subdirectory README.
 
-Tests use `unittest` and should run without GPU or Isaac Sim. Add focused `test_*` methods in `tests/` for loader, protocol, metric, or session changes. For dataset or runner changes, also run a dry run; use the Isaac smoke test when available.
+## Commits, Data, and Security
 
-## Commit & Pull Request Guidelines
-
-Use short, imperative commit subjects (for example, `Validate session dependencies`) and keep unrelated changes separate. Pull requests should explain behavior and schema changes, link issues, list validation commands and results, and include screenshots or logs when viewer or output behavior changes. Do not commit checkpoints, caches, `results/`, or unlicensed large scene assets; update `docs/` and checksums when contracts change.
-
-## Data and Environment Notes
-
-Isaac Sim, ROS, external agent services, model checkpoints, and Actor SDG dependencies are installed separately. Preserve frozen dataset inputs, respect `NOTICE`, and publish large USDZ files through the documented release or LFS workflow.
+Use short imperative commit subjects. Pull requests should describe schema and behavior changes and list validation results. Do not commit generated results, caches, checkpoints, credentials, private conversation data, or unlicensed large scene assets. Preserve frozen dataset inputs and respect `NOTICE`.

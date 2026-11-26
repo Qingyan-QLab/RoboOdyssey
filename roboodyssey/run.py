@@ -8,33 +8,31 @@ import json
 import logging
 import math
 import re
+import shlex
 import sys
 from pathlib import Path
 from .artifacts.layout import sha256_file as _digest
 import traceback
-from .agents.agent_api import AgentProcess
-from .agents.protocol import PROTOCOL_VERSION
+from .interaction.agent_api import AgentProcess
+from .interaction.protocol import PROTOCOL_VERSION
 from .scenes.dataset_loader import BenchmarkDataset
 from .evaluation.report import write_summary
 from .runtime.session_runner import SessionRunner
 from .runtime.observations import OBSERVATION_POLICY
 from .evaluation.task_metrics import METRIC_POLICY
-from .scenes.holoagent_sensor_bridge import HoloAgentSensorTopics
+from importlib import import_module
 from .artifacts.layout import initialize_run, update_status, write_json
 
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HOLOAGENT_SENSOR_TOPICS = HoloAgentSensorTopics()
 
 
 def _agent_name(command: str) -> str:
     """Derive a filesystem-safe short name from an agent command."""
-    lowered = command.lower()
-    if "simplenav" in lowered:
-        name = "simplenav"
-    elif "random_agent" in lowered:
-        name = "random"
+    parts = shlex.split(command)
+    if "-m" in parts and parts.index("-m") + 1 < len(parts):
+        module = parts[parts.index("-m") + 1].split(".")
+        name = module[-2] if len(module) > 1 and module[-1] == "agent" else module[-1]
     else:
-        name = Path(command.split()[0]).stem or "agent"
+        name = Path(parts[0]).stem if parts else "agent"
     return re.sub("[^a-zA-Z0-9_.-]+", "_", name)[:48]
 
 
@@ -76,7 +74,9 @@ def _inspect(dataset: BenchmarkDataset, scene_ids: list[str]) -> None:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", type=Path, required=True)
+    parser.add_argument("--dataset", type=Path, help="published dataset directory or tar")
+    parser.add_argument("--scene-source", type=Path, help="standalone Scene directory or tar")
+    parser.add_argument("--session-source", type=Path, action="append", help="standalone Session directory or tar; repeat to order Sessions")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
         "--sequence",
@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--agent-cmd",
-        default="python3 -m roboodyssey.agents.random_agent",
+        required=False,
         help="command implementing the JSONL agent protocol",
     )
     parser.add_argument(
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         "--horizontal-fov-degrees",
         type=float,
         default=None,
-        help="front camera horizontal FOV; defaults to 100, or the HoloAgent interface FOV when sensors are enabled",
+        help="front camera horizontal FOV; defaults to 100 or the selected sensor plugin FOV",
     )
     from .scenes.robot_body import ROBOT_NAMES, resolve_robot
     embodiment = parser.add_mutually_exclusive_group()
@@ -162,37 +162,25 @@ def main(argv: list[str] | None = None) -> int:
                         help="local JSON profile for a USD body using high-level avatar controls")
     parser.add_argument("--robot-assets", type=Path,
                         help="robot asset directory containing profiles/ and usd/; alternatively BENCHMARK_ROBOT_ASSETS")
-    parser.add_argument(
-        "--holoagent-sensors",
-        action="store_true",
-        help="publish Isaac Sim RGB/depth/camera-info/pose to HoloAgent ROS 2 topics",
-    )
-    parser.add_argument(
-        "--holoagent-rgb-topic", default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.rgb
-    )
-    parser.add_argument(
-        "--holoagent-depth-topic", default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.depth
-    )
-    parser.add_argument(
-        "--holoagent-camera-info-topic",
-        default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.camera_info,
-    )
-    parser.add_argument(
-        "--holoagent-pose-topic", default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.pose
-    )
-    parser.add_argument(
-        "--holoagent-frame-id", default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.frame_id
-    )
-    parser.add_argument(
-        "--holoagent-pose-frame-id",
-        default=DEFAULT_HOLOAGENT_SENSOR_TOPICS.pose_frame_id,
-    )
+    parser.add_argument("--sensor-plugin", help="optional module providing sensor_contract() and create_bridge()")
     parser.add_argument(
         "--official",
         action="store_true",
         help="enforce the frozen, full-dataset evaluation profile",
     )
     args = parser.parse_args(argv)
+    if bool(args.dataset) == bool(args.scene_source):
+        parser.error("provide either --dataset or --scene-source with --session-source")
+    if args.scene_source and not args.session_source:
+        parser.error("--scene-source requires at least one --session-source")
+    if args.dataset and args.session_source:
+        parser.error("--session-source is only used with --scene-source")
+    if args.scene_source and (args.sequence or args.all_sequences):
+        parser.error("--sequence and --all-sequences apply to published datasets")
+    if args.scene_source and args.official:
+        parser.error("--official requires a frozen published dataset")
+    if not args.dry_run and not args.agent_cmd:
+        parser.error("real execution requires --agent-cmd")
     try:
         robot_selection = resolve_robot(args.robot, profile=args.robot_profile, assets=args.robot_assets)
     except (ValueError, OSError, TypeError) as exc:
@@ -239,8 +227,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--official requires --max-steps 2000 and --agent-timeout 120")
         if args.horizontal_fov_degrees not in (None, 100.0):
             parser.error("--official requires a 100 degree horizontal FOV")
-        if args.holoagent_sensors:
-            parser.error("--official does not enable adapter-specific ROS sensors")
+        if args.sensor_plugin:
+            parser.error("--official does not enable adapter-specific sensors")
     if args.all_sequences or (args.sequence and len(args.sequence) > 1):
         if args.run_directory:
             parser.error(
@@ -252,9 +240,14 @@ def main(argv: list[str] | None = None) -> int:
             args.dataset, None if args.all_sequences else args.sequence
         )
         return run_collection(paths, args.output, raw_argv, dry_run=args.dry_run)
-    dataset = BenchmarkDataset(
-        args.dataset, sequence_id=args.sequence[0] if args.sequence else None
-    )
+    if args.scene_source:
+        from .data.sources import BenchmarkSuite, load_scene, load_session
+
+        dataset = BenchmarkSuite(load_scene(args.scene_source), [load_session(s) for s in args.session_source]).dataset
+    else:
+        dataset = BenchmarkDataset(
+            args.dataset, sequence_id=args.sequence[0] if args.sequence else None
+        )
     from .scenes.robot_body import validate_scene_robot
     if args.official:
         from .validation.dataset import main as validate_main
@@ -283,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
         {
             "schema_version": 1,
             "argv": raw_argv,
+            "input_kind": "external_scene_session" if args.scene_source else "published_dataset",
+            "scene_source": str(args.scene_source) if args.scene_source else None,
+            "session_sources": [str(source) for source in args.session_source or []],
             "dataset_root": str(dataset.root),
             "sequence_identity": dataset.sequence_identity(),
             "python": sys.executable,
@@ -291,7 +287,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     from .launch.provenance import capture_provenance
 
-    capture_provenance(output_root / "provenance.json", dataset_root=dataset.root)
+    if args.scene_source:
+        capture_provenance(output_root / "provenance.json", scene_source=args.scene_source,
+                           session_sources=args.session_source)
+    else:
+        capture_provenance(output_root / "provenance.json", dataset_root=dataset.root)
     from .scenes.isaac_backend import IsaacBackend
 
     try:
@@ -333,26 +333,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         from .scenes.isaac_env import EnvConfig
 
-        holoagent_sensor_topics = None
-        if args.holoagent_sensors:
-            holoagent_sensor_topics = HoloAgentSensorTopics(
-                rgb=args.holoagent_rgb_topic,
-                depth=args.holoagent_depth_topic,
-                camera_info=args.holoagent_camera_info_topic,
-                pose=args.holoagent_pose_topic,
-                frame_id=args.holoagent_frame_id,
-                pose_frame_id=args.holoagent_pose_frame_id,
-            )
+        sensor_contract = None
+        sensor_bridge_factory = None
+        if args.sensor_plugin:
+            plugin = import_module(args.sensor_plugin)
+            sensor_contract = plugin.sensor_contract()
+            sensor_bridge_factory = plugin.create_bridge
         sensor_resolution = (
-            (holoagent_sensor_topics.width, holoagent_sensor_topics.height)
-            if holoagent_sensor_topics is not None
+            (sensor_contract.width, sensor_contract.height)
+            if sensor_contract is not None
             else (256, 256)
         )
         horizontal_fov = (
             args.horizontal_fov_degrees
             if args.horizontal_fov_degrees is not None
-            else holoagent_sensor_topics.horizontal_fov_degrees
-            if holoagent_sensor_topics is not None
+            else sensor_contract.horizontal_fov_degrees
+            if sensor_contract is not None
             else 100.0
         )
         camera_config = EnvConfig(
@@ -362,6 +358,13 @@ def main(argv: list[str] | None = None) -> int:
         focal_pixels = width / (
             2.0 * math.tan(math.radians(camera_config.horizontal_fov_degrees) / 2.0)
         )
+        source_manifest = (dataset.root / "dataset_manifest.json") if not args.scene_source else dataset.scene.manifest_path
+        source_digest = _dataset_digest(dataset.root) if not args.scene_source else hashlib.sha256(
+            "".join(sorted(_digest(path) for path in (
+                [dataset.scene.asset, dataset.scene.manifest_path, *dataset.scene.resources.values()]
+                + [p for session in dataset._sessions for p in (session.path, session.manifest_path, *session.resources.values())]
+            ))).encode("ascii")
+        ).hexdigest()
         from .scenes.isaac_env import AVATAR_INTERACTION
         from .evaluation.requests import SUCCESS_RULE_VERSION
         from .evaluation.navigation import NAVIGATION_REFERENCE_VERSION
@@ -375,8 +378,8 @@ def main(argv: list[str] | None = None) -> int:
                                  'transfer': TRANSFER_POLICY['reference_version']},
             'interaction_model': AVATAR_INTERACTION,
             'lighting': camera_config.lighting.as_dict(),
-            "dataset_manifest_sha256": _digest(dataset.root / "dataset_manifest.json"),
-            "dataset_tree_sha256": _dataset_digest(dataset.root),
+            "dataset_manifest_sha256": _digest(source_manifest),
+            "dataset_tree_sha256": source_digest,
             "scene_ids": scenes,
             "max_steps_per_task": args.max_steps,
             "agent_timeout_seconds": args.agent_timeout,
@@ -399,11 +402,14 @@ def main(argv: list[str] | None = None) -> int:
             "schema_version": 1,
             "protocol_version": PROTOCOL_VERSION,
             "dataset_id": dataset.manifest.get("dataset_id"),
+            "input_kind": "external_scene_session" if args.scene_source else "published_dataset",
+            "scene_source": str(args.scene_source) if args.scene_source else None,
+            "session_sources": [str(source) for source in args.session_source or []],
             "dataset_root": str(dataset.root),
             "runtime_scene_cache": str(dataset._requests.path("runtime_scene_cache")),
             "runtime_contract": dataset.manifest.get("runtime_contract"),
             "sequence_identity": dataset.sequence_identity(),
-            "dataset_manifest_sha256": _digest(dataset.root / "dataset_manifest.json"),
+            "dataset_manifest_sha256": _digest(source_manifest),
             "dataset_tree_sha256": official_profile["dataset_tree_sha256"],
             "scene_ids": scenes,
             "agent_command": args.agent_cmd,
@@ -418,9 +424,8 @@ def main(argv: list[str] | None = None) -> int:
             else None,
             "observation_views": ["front"],
             "observation_policy": OBSERVATION_POLICY,
-            "holoagent_sensors": None
-            if holoagent_sensor_topics is None
-            else holoagent_sensor_topics.as_dict(),
+            "sensor_plugin": args.sensor_plugin,
+            "sensor_contract": None if sensor_contract is None else sensor_contract.as_dict(),
             "run_timestamp": run_timestamp,
             "run_directory": str(output_root),
             "agent_name": _agent_name(args.agent_cmd),
@@ -482,7 +487,8 @@ def main(argv: list[str] | None = None) -> int:
             factory = backend.scene_factory(
                 dataset,
                 camera_config=camera_config,
-                holoagent_sensor_topics=holoagent_sensor_topics,
+                sensor_bridge_factory=sensor_bridge_factory,
+                sensor_contract=sensor_contract,
                 video_options=video_options,
             )
             for scene_id in scenes:

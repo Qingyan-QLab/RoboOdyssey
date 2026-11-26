@@ -128,7 +128,7 @@ Agent 的 `client_status=closed` 仅代表客户端收尾，不证明 benchmark 
 缺失用量不能按零费用解释。usage 累计的是 API 返回的计量 token，可能包括再次计量的会话历史；
 上传字符数和上传图像计数不能代替计费 token。deadline 到达后远端请求可能仍计费，
 迟到结果不更改响应链或日志。此模式不自动重试，避免图像和未知完成状态的请求被重复发送。
-费用估算及启动方式见 [API Agent](OPENAI_API_AGENT.md)。
+费用估算及启动方式见 [API Agent](https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations/blob/main/docs/OPENAI_API_AGENT.md)。
 
 ## 可重建报告
 

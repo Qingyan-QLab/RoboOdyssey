@@ -10,9 +10,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from roboodyssey.agents.simplenav import SimpleNavAgent
 from roboodyssey.runtime.recording import SessionRecorder, RecordingError
-from roboodyssey.launch.simplenav import load_config, commands, preflight
 from roboodyssey.runtime.request_runner import apply_boundary
 from roboodyssey.runtime.session_runner import SessionRunner
 from roboodyssey.reporting.request_audit import write_request_audit, lines
@@ -20,85 +18,6 @@ from roboodyssey.evaluation.report import write_summary
 from tests.test_contextual_requests import Env, Agent, fixture_v3, task, goal, SOURCE, select_scenario, write_dataset, BenchmarkDataset
 
 
-class SimpleNavProtocolTests(unittest.TestCase):
-    def test_continuous_frames_enter_model_history_with_real_capture_times(self):
-        agent = self.agent()
-        captured = []
-        agent.adapter.build_example = lambda **kw: captured.append(kw) or {'instruction': kw['instruction']}
-        history = []
-        for frame_id in (1, 2, 3):
-            history.append({'images': {'front': np.full((4,4,3), frame_id, np.uint8)},
-                'timing': {'frame_id': frame_id, 'captured_monotonic_s': 10 + .5 * frame_id}})
-        current = self.request(observation_history=history)
-        current['observation']['timing'] = {'frame_id': 4, 'captured_monotonic_s': 12.0}
-        agent.handle(current)
-        model_history = captured[0]['history'].observations
-        self.assertEqual([o['navvla_eval']['frame_index'] for o in model_history], [1, 2, 3])
-        self.assertEqual([o['navvla_eval']['timestamp'] for o in model_history], [10.5, 11.0, 11.5])
-        self.assertEqual(captured[0]['observation']['navvla_eval']['frame_index'], 4)
-
-    def agent(self):
-        self.calls=[]
-        policy=SimpleNamespace(predict_action=lambda q:self.calls.append(q) or {'normalized_actions':[[.2,0,0,0]]})
-        codec=SimpleNamespace(decode=lambda q:SimpleNamespace(raw_actions=q['normalized_actions']))
-        adapter=SimpleNamespace(prepare_observation_for_step=lambda **kw:kw['observation'],
-            build_example=lambda **kw:{'instruction':kw['instruction']},update_history=lambda **kw:None)
-        return SimpleNavAgent(policy,codec,adapter,lambda:SimpleNamespace(images=[],observations=[],instructions=[]),collision_reset_threshold=1)
-
-    def request(self, **changes):
-        return {'type':'step','scene_id':'scene','session_id':'session_000','task_id':'task_000',
-                'task_type':'long_horizon','capabilities':['navigation'], 'instruction':'Go to the lamp.',
-                'current_time':'2026-11-05T09:00:00+08:00',
-                'observation':{'images':{'front':np.zeros((10,10,3),dtype=np.uint8)}},**changes}
-
-    def test_v5_calls_model_with_public_memory_across_sessions(self):
-        agent=self.agent()
-        agent.handle({'type':'session_start','scene_id':'scene','instruction':'Help me.', 'scene_briefing':['Call this area the study.']})
-        result=agent.handle(self.request(name_introductions=['Call the tall light the lamp.']))
-        self.assertEqual(result['action']['action'],'move_forward')
-        agent.handle({'type':'session_start','scene_id':'scene','instruction':'Continue.'})
-        agent.handle(self.request(session_id='session_001'))
-        text=self.calls[-1]['examples'][0]['instruction']
-        self.assertIn('study',text);self.assertIn('tall light',text);self.assertIn('2026-11-05',text)
-        self.assertIn('not evidence of success',text)
-        self.assertEqual(len(agent.requests),2)
-        agent.handle({'type':'session_start','scene_id':'other','instruction':'New scene.'})
-        self.assertFalse(agent.definitions);self.assertFalse(agent.requests)
-
-    def test_unsupported_is_explicit_and_does_not_call_model(self):
-        agent=self.agent()
-        for caps in (['navigation','qa'],['navigation','manipulation']):
-            result=agent.handle(self.request(capabilities=caps))
-            self.assertEqual(result['agent_status'],'unsupported');self.assertTrue(result['done'])
-        self.assertEqual(self.calls,[])
-        with self.assertRaisesRegex(ValueError,'capabilities'):agent.handle(self.request(capabilities=[]))
-
-    def test_long_public_memory_cannot_push_current_request_out_of_model_prefix(self):
-        agent=self.agent()
-        agent.definitions=['A previous object has a long public description. '*400]
-        agent.requests=[{'time':'old','instruction':'Old request. '*200} for _ in range(32)]
-        request=self.request(instruction='Go to the new lamp beside the sofa.')
-        agent.handle(request)
-        text=self.calls[-1]['examples'][0]['instruction']
-        # The backend truncates from the right. Even a conservative short
-        # retained prefix must include the current instruction and its time.
-        self.assertIn(request['instruction'],text[:1024])
-        self.assertIn(request['current_time'],text[:1024])
-
-    def test_service_error_and_bad_waypoint_are_not_task_failures(self):
-        agent=self.agent();agent.policy.predict_action=lambda q:{'ok':False,'error':'offline'}
-        with self.assertRaisesRegex(RuntimeError,'offline'):agent.handle(self.request())
-        agent.policy.predict_action=lambda q:{'normalized_actions':[[float('nan'),0,0,0]]}
-        with self.assertRaisesRegex(ValueError,'non-finite'):agent.handle(self.request())
-
-    def test_recovery_respects_allowed_actions(self):
-        agent=self.agent();request=self.request(allowed_actions=['move_forward'])
-        request['observation']['action_feedback']={'collision':True}
-        self.assertEqual(agent.handle(request)['action']['action'],'move_forward')
-        request.pop('allowed_actions')
-        self.assertEqual(agent.handle(request)['action']['action'],'reset')
-        with self.assertRaisesRegex(ValueError,'long_horizon'):
-            agent.handle(self.request(task_type='navigation'))
 
 
 class RecordingTests(unittest.TestCase):
@@ -445,15 +364,6 @@ class PreflightTests(unittest.TestCase):
         self.assertIn('resets 1',overlay._status.text)
         self.assertIn('FAILED',overlay._title.text)
 
-    def test_default_preparation_never_executes_even_when_checks_pass(self):
-        from roboodyssey.cli import main
-        from contextlib import redirect_stdout
-        from io import StringIO
-        with patch('roboodyssey.launch.simplenav.load_config',return_value={}), \
-             patch('roboodyssey.launch.simplenav.preflight',return_value={'ok':True}), \
-             patch('roboodyssey.launch.experiment.execute') as execute,redirect_stdout(StringIO()):
-            self.assertEqual(main(['preflight','--config','unused.json']),0)
-            execute.assert_not_called()
 
     def test_resource_cleanup_uses_camera_destroy_and_attempts_all_resources(self):
         from roboodyssey.scenes.isaac_env import IsaacVLNEnv
@@ -461,32 +371,13 @@ class PreflightTests(unittest.TestCase):
         released=[]
         def broken():released.append('overview');raise RuntimeError('release error')
         env._review_overview_sensor=SimpleNamespace(destroy=broken)
-        env._holoagent_sensor_bridge=SimpleNamespace(close=lambda:released.append('bridge'))
+        env._sensor_bridge=SimpleNamespace(close=lambda:released.append('bridge'))
         env.camera=SimpleNamespace(destroy=lambda:released.append('front'))
         with self.assertRaisesRegex(RuntimeError,'release error'):env.close()
         self.assertEqual(released,['overview','bridge','front'])
         env.close()
 
-    def test_cpu_preflight_does_not_launch_isaac_or_connect_model(self):
-        from roboodyssey.launch.simplenav import ROOT
-        example=ROOT/'configs/simplenav/review.example.json'
-        config=load_config(example)
-        cmd=commands(config)
-        self.assertIn('--record-video',cmd['benchmark_argv']);self.assertIn('--viewer',cmd['benchmark_argv'])
-        self.assertIn('--simplenav-root',cmd['agent_argv'])
-        invoked=[]
-        def subprocess_run(argv,**kwargs):
-            invoked.append(argv)
-            if argv[0]==config['isaac_python']:raise AssertionError('must not execute Isaac')
-            if '-encoders' in argv:return SimpleNamespace(stdout='libx264')
-            self.assertNotIn('import torch',argv[-1]);self.assertNotIn('import isaacsim',argv[-1])
-            return SimpleNamespace(stdout=json.dumps({'numpy':True,'PIL':True}))
-        with patch('roboodyssey.launch.simplenav.subprocess.run',side_effect=subprocess_run), \
-             patch('roboodyssey.scenes.dataset_loader.BenchmarkDataset',side_effect=ValueError('fixture avoids full archive')):
-            report=preflight(config)
-        self.assertFalse(report['ok'])
-        self.assertIn('model_connection',report['not_executed'])
-        self.assertTrue(all('roboodyssey.run' not in argv for argv in invoked))
+
 
     def test_report_escapes_html_and_detects_truncated_logs(self):
         c,i,p=fixture_v3();r=select_scenario(c,p)
@@ -502,6 +393,5 @@ class PreflightTests(unittest.TestCase):
             for name in ('request_outcomes.jsonl','video_index.jsonl','runtime_mutations.jsonl'):
                 with session_file(session, name).open('a') as stream:stream.write('[]\n')
             self.assertEqual(len(write_request_audit(out)['integration_errors']),5)
-
 
 if __name__=='__main__':unittest.main()

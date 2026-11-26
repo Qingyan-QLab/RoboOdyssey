@@ -73,6 +73,47 @@ class ComparisonTests(unittest.TestCase):
                 self.assertFalse(self.compare()['comparable'])
                 write_json(self.b/'run_config.json', original)
 
+    def test_current_sensor_plugin_configuration_is_comparable(self):
+        for root in (self.a, self.b):
+            config = read_json(root/'run_config.json')
+            config.pop('holoagent_sensors')
+            config.update(sensor_plugin='external.sensors', sensor_contract={'width': 128, 'height': 128})
+            write_json(root/'run_config.json', config)
+        self.assertTrue(self.compare()['comparable'])
+        original = read_json(self.b/'run_config.json')
+        for field, value in (('sensor_plugin', 'external.other_sensors'),
+                             ('sensor_contract', {'width': 256, 'height': 128})):
+            with self.subTest(field=field):
+                write_json(self.b/'run_config.json', {**original, field: value})
+                report = self.compare()
+                self.assertFalse(report['comparable'])
+                self.assertIn('metric_action_sensor_or_budget_mismatch',
+                              report['comparisons'][0]['pairs'][0]['issues'])
+
+    def test_explicitly_disabled_sensors_keep_legacy_compatibility(self):
+        config = read_json(self.b/'run_config.json')
+        config.pop('holoagent_sensors')
+        config.update(sensor_plugin=None, sensor_contract=None)
+        write_json(self.b/'run_config.json', config)
+        self.assertTrue(self.compare()['comparable'])
+        config = read_json(self.a/'run_config.json')
+        config['holoagent_sensors'] = {'width': 128, 'height': 128}
+        write_json(self.a/'run_config.json', config)
+        self.assertFalse(self.compare()['comparable'])
+
+    def test_incomplete_sensor_configuration_is_not_guessed(self):
+        original = read_json(self.b/'run_config.json')
+        original.pop('holoagent_sensors')
+        for fields in ({}, {'sensor_plugin': None}, {'sensor_contract': None},
+                       {'sensor_plugin': 'external.sensors', 'sensor_contract': None},
+                       {'sensor_plugin': 'external.sensors', 'sensor_contract': []}):
+            with self.subTest(fields=fields):
+                write_json(self.b/'run_config.json', {**original, **fields})
+                report = self.compare()
+                self.assertFalse(report['comparable'])
+                issues = report['comparisons'][0]['pairs'][0]['candidate']['issues']
+                self.assertTrue(any('sensor' in issue for issue in issues))
+
     def test_old_cylinder_and_stretch_official_results_do_not_mix(self):
         from roboodyssey.scenes.robot_body import default_robot_identity, OFFICIAL_EMBODIMENT_VERSION
         config = read_json(self.b/'run_config.json')

@@ -67,8 +67,6 @@ def main(argv: list[str] | None = None) -> int:
     commands = {
         'run': ('run', {}, 'run the benchmark'),
         'validate': ('validation.dataset', {}, 'CPU dataset/archive/collection validation'),
-        'preflight': ('launch.simplenav', {'mode': 'preflight'}, 'CPU-only SimpleNav experiment checks'),
-        'experiment': ('launch.simplenav', {'mode': 'experiment'}, 'prepare or explicitly execute an experiment'),
         'analyze': ('reporting.analyze', {}, 'CPU repair, score and reset reports'),
         'compare': ('reporting.compare', {}, 'compare explicitly paired runs with matching evaluation conditions'),
         'batch': ('launch.batch', {}, 'plan or run generic serial sequence attempts with bounded retries'),

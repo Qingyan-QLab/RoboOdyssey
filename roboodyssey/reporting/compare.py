@@ -80,9 +80,20 @@ def _load(value):
                       'observation_policy', 'max_steps_per_task', 'agent_timeout_seconds'):
             if field not in config or config[field] != profile[field]:
                 raise ValueError('profile/config mismatch: '+field)
-        context_fields = ('motion', 'camera', 'recording', 'holoagent_sensors', 'step_delay_seconds', 'official')
+        context_fields = ('motion', 'camera', 'recording', 'step_delay_seconds', 'official')
         if any(key not in config for key in context_fields):
             raise ValueError('missing action, sensor or diagnostic configuration')
+        plugin_fields = ('sensor_plugin', 'sensor_contract')
+        if any(key in config for key in plugin_fields):
+            if not all(key in config for key in plugin_fields):
+                raise ValueError('missing sensor plugin or contract configuration')
+            plugin, contract = (config[key] for key in plugin_fields)
+            if ((plugin is None) != (contract is None)
+                    or (plugin is not None and (not isinstance(plugin, str) or not plugin
+                                               or not isinstance(contract, dict)))):
+                raise ValueError('invalid sensor plugin or contract configuration')
+        elif 'holoagent_sensors' not in config:
+            raise ValueError('missing sensor configuration')
         if not isinstance(config['motion'], dict) or not isinstance(config['camera'], dict):
             raise ValueError('motion and camera must be JSON objects')
         if (config['motion'].get('interaction_model') != profile['interaction_model']
@@ -90,6 +101,9 @@ def _load(value):
                 or config.get('lighting') != profile['lighting']):
             raise ValueError('action, lighting or runtime contract identity mismatch')
         context = {key: config[key] for key in context_fields}
+        # Preserve legacy sensor identity and include the general plugin contract.
+        # Explicitly disabled sensors compare equally across the two writers.
+        context.update({key: config.get(key) for key in ('holoagent_sensors', *plugin_fields)})
         context['profile'] = {key: val for key, val in profile.items() if key not in {
             'dataset_manifest_sha256', 'dataset_tree_sha256', 'sequence_identity', 'scene_ids'}}
         context['runtime_contract'] = layout['runtime_contract']

@@ -36,7 +36,7 @@ step 响应：
 环境按二维半径 `0.1 m` 的圆形 agent footprint 进行路径碰撞检测。若超长移动
 遇到障碍，环境会在碰撞前约 `0.1 m` 停止，并在下一次请求的
 `observation.action_feedback` 中返回 `collision`、
-`executed_distance` 和 `reason`。SimpleNav 的恢复策略见 [适配说明](SIMPLENAV_V5.md)。
+`executed_distance` 和 `reason`。SimpleNav 的恢复策略见 [适配说明](https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations/blob/main/docs/SIMPLENAV_V5.md)。
 
 v5 不公开或接受 object_id／room_id 操作句柄。pick 使用已介绍的公开名称，例如
 `{"action":"pick","target":"reading book"}`；place 在当前位置释放持物。
@@ -53,16 +53,16 @@ look_up、look_down、pick、place、open、close 和 reset。
 SimpleNav 仅支持导航，不直接预测抓放或开关门；问答／操作请求返回 unsupported，后端错误返回 integration_error。
 未知动作、无效 JSON、进程退出和超时按 [结果分类](RULES.md#exclusions) 处理。
 代码准备、CPU 预检、GUI／录像启动和失败修补报告见
-[SimpleNav v5](SIMPLENAV_V5.md)。
+[SimpleNav v5](https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations/blob/main/docs/SIMPLENAV_V5.md)。
 
 ## API 视觉 Agent
 
-`examples/openai_api_agent.py --config /absolute/path/to/agent.local.json` 是直接调用 API 的 v5
-Agent 入口，使用 `roboodyssey/agents/openai_api.py` 和 Responses 响应链。
+`agent_integrations/openai_api/agent.py --config /absolute/path/to/agent.local.json` 是直接调用 API 的 v5
+Agent 入口，使用 `agent_integrations/openai_api/adapter.py` 和 Responses 响应链。
 序列首轮上传 prompt 和初始机器人状态，每轮仅上传当前 RGB；任务文本变更时追加，
 不重传历史帧、不维护显式记忆。模型自行依靠连续会话记忆，默认仅保留最小执行反馈。
-本仓库仅发布 SimpleNav 配置模板；API 实验使用自行准备的 `configs/openai_api/agent.local.json`，不传给 SimpleNav 实验管理器。
-模型 ID、API 参数、离线检查、诊断／正式命令及费用记录见 [API Agent 专题](OPENAI_API_AGENT.md)。
+Agent Integrations 仓库发布 SimpleNav 配置模板；API 实验使用自行准备的 `agent_integrations/openai_api/agent.local.json`，不传给 SimpleNav 实验管理器。
+模型 ID、API 参数、离线检查、诊断／正式命令及费用记录见 [API Agent 专题](https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations/blob/main/docs/OPENAI_API_AGENT.md)。
 
 `openai_compatible_vlm_agent.py` 提供无状态视觉服务适配，也供 HoloAgent 组合服务使用。
 
@@ -85,9 +85,9 @@ pick 只能作用于发布数据中冻结的 pick/place candidate，且对象必
 
 ## 新增模型适配
 
-SimpleNav 接口继续保留：`roboodyssey/agents/simplenav.py` 实现模型状态与动作转换，
-`examples/simplenav_agent.py` 为 JSONL 入口，`configs/simplenav/*.example.json` 配置 managed／external 服务。
-模型配置统一放在 `configs/<model>/`；当前仅保留 SimpleNav 共享模板，本机配置使用 `*.local.json`，不提交版本控制。
+SimpleNav 接口继续保留：`agent_integrations/simplenav/adapter.py` 实现模型状态与动作转换，
+`agent_integrations/simplenav/agent.py` 为 JSONL 入口，`agent_integrations/simplenav/*.example.json` 配置 managed／external 服务。
+模型配置与实现集中放在 `agent_integrations/<model>/`；当前仅保留 SimpleNav 共享模板，本机配置使用 `*.local.json`，不提交版本控制。
 后续模型采用同样的实现／入口／配置分层，并复用 `agents/stream.py` 持续接收观测。
 
 适配器声明能力和不支持的任务，按协议确认新序列记忆重置，关联实际使用的观测帧。

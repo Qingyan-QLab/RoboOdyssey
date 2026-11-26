@@ -2,8 +2,27 @@
 
 安装包名 `RoboOdyssey`，导入名 `roboodyssey`；消费者依赖 `>=0.2.1,<0.3`。
 `roboodyssey.PUBLIC_API_VERSION` 与 `roboodyssey.data.API_VERSION` 当前均为 `1`。
-兼容范围是三库**当前输出**：sequence schema 5、layout 2、`contextual_requests` v3。
+冻结发布数据继续使用 sequence schema 5、layout 2、`contextual_requests` v3；同时保留
+PR #4 的独立 Scene/Session 资源包（resource manifest schema 1）。两种契约并存，不自动转换数据或改写身份。
 不承诺旧 Builder 格式转换、旧编译器重放或任意历史评分重算。
+
+## 两种场景契约
+
+`roboodyssey.load_scene` 与 `roboodyssey.data.load_scene` 使用相同入口，按输入 manifest 选择读取器：
+
+| 输入 | 返回值 | 显式限定入口 |
+|---|---|---|
+| `scene_resources.json` 目录或 tar | `SceneSpec` | `roboodyssey.data.load_scene_spec` / `roboodyssey.data.sources.load_scene` |
+| `scene_version.json`、`scene_manifest.json`、`dataset_manifest.json` 目录或发布 tar | `SceneVersion` | `roboodyssey.data.load_scene_version` / `roboodyssey.data.api.load_scene` |
+
+`revision=` 仅适用于冻结 `SceneVersion`；资源包传入该参数会明确报错。若一个输入同时包含两类可加载
+manifest，公共分派入口拒绝歧义，调用方须指定具体目录或显式限定入口。选定格式后任何哈希、版本或身份
+错误都会直接失败，不通过尝试另一读取器绕过校验。已加载的 `SceneSpec` 和 `SceneVersion` 可直接传回公共入口。
+
+`BenchmarkSuite`、`load_session`、`load_published_dataset` 的 PR #4 调用保持可用。
+独立资源包由 `BenchmarkSuite(scene, sessions)` 驱动；冻结数据的 `load_sequence`、`validate_binding`
+与 `runtime.policy.run_sequence` 继续要求 `SceneVersion`/`SequenceData` 契约，不把资源包自动标成冻结发布数据。
+独立资源文件约定见 [SCENE_SESSION](SCENE_SESSION.md)。
 
 ## 冻结场景和任务
 
@@ -55,6 +74,13 @@ factory = make_isaac_env_factory(sequence, app, config=env_config)
 summary = run_sequence(sequence, policy, '/data/new_attempt', env_factory=factory)
 ```
 
+`make_isaac_env_factory` 接受冻结 sequence 输入、已加载的 `BenchmarkDataset`，也接受
+`BenchmarkSuite.dataset` 提供的 `ExternalDataset`；它创建环境工厂，不转换数据格式。
+独立资源包运行使用 `suite.interact(agent, output, make_isaac_env_factory(suite.dataset, app))`，
+其中 `agent` 遵守 #4 的 request/send_observation 接口。`run_sequence` 仍只处理冻结 sequence，
+不会把资源包组合自动转换为 `SequenceData`。原始观测存储由 `run_sequence(capture=True)` 或
+显式传给 `SessionRunner` 的 `ObservationArchive` 启用；`BenchmarkSuite.interact` 暂不提供 capture 参数。
+
 `policy` 是可信 Python 对象，提供 `decide(task, public_observation, context)` 和可选 `reset()`。
 默认 `permission_profile='private_state_oracle'` 接收私有 context：实际 GT、状态、历史、名称、任务起始参考及实际动作反馈。
 声明 `permission_profile='perception_policy'` 则仅收到公共任务、原始 numpy 观测、scene/session 身份和白名单公开反馈；不交付私有上下文。
@@ -97,15 +123,17 @@ summary = run_sequence(sequence, policy, '/data/new_attempt', env_factory=factor
 python -m pip install ./roboodyssey-0.2.1-py3-none-any.whl
 python -m roboodyssey check
 python -m roboodyssey validate --help
-python -m roboodyssey.agents.simplenav_cli --help
-python -m roboodyssey.agents.openai_api_cli --help
+python -m roboodyssey run --help
 ```
 
 wheel 的 `check` 执行公共 CPU 模块、协议资源与碰撞查询 smoke check；源码树的同一命令运行完整回归，
 `--core` 选择源码快速子集。两种检查均禁止导入 Isaac/模型/生成库，不混称完整测试。
-默认随机协议 Agent 已在包内；源 `examples/` 入口只转发。Isaac SDK 和场景资产仍由运行环境单独提供。
+被测 Agent 实现沿用 PR #4 的外围仓库分层；真实运行须显式传入 `--agent-cmd`，核心不包含默认随机 Agent
+或 OpenAI/SimpleNav 集成实现。协议位于 `roboodyssey.interaction`。Isaac SDK 和场景资产仍由运行环境单独提供。
 
 通用实验批次、有限重试及严格结果比较见 [BATCH](BATCH.md)。
+比较条件包含 `sensor_plugin` 与 `sensor_contract`，同时保留历史 `holoagent_sensors` 身份；
+不同插件或传感器契约的运行不得混合比较。两种记录格式中显式关闭额外传感器的条件可互相比较。
 
 ## Stretch3 身份与默认配置（0.2.1）
 
@@ -122,8 +150,9 @@ Builder 应将 `default_robot_identity()` 写入 `scene_version.json.robot_profi
 自定义 scalar 半径也须明确 `robot_body=None`，不能覆盖身体 profile 却保留其身份。
 共享计划、放置与派生导航保留声明；计划仍是预计状态，不能充当实际运行证据。
 
-## 当前 PR 联合验收
+## PR #5 原始版本验收记录
 
+以下记录对应原 PR #5 提交 `aed30d5`，不能代替 PR #4 适配版本的重新验收。
 2026-11-26，迁移后的 RoboOdyssey 0.2.1 安装包在源码目录外完成三库联调：
 Stretch3 合成场景 5/5 任务成功、46 帧、1 个完整 sequence 训练样本；公开核心独立官方入口及离线重评分通过。
 [可复现条件和完整验收记录](validation/pr_integration_20261126.json)区分私有状态 Oracle 闭环与官方脚本验证，

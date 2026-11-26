@@ -365,7 +365,7 @@ r_start = 0 时：在达标范围内为 100，否则为 0
 |---|---|
 | 参数、正式配置、运行身份 | [run.py](../roboodyssey/run.py) |
 | 真实时间观测调度与漏采 | [observations.py](../roboodyssey/runtime/observations.py) |
-| 逐帧发送与 Agent 接收／推理解耦 | [agent_api.py](../roboodyssey/agents/agent_api.py)、[stream.py](../roboodyssey/agents/stream.py) |
+| 逐帧发送与 Agent 接收／推理解耦 | [agent_api.py](../roboodyssey/interaction/agent_api.py)、[stream.py](../roboodyssey/interaction/stream.py) |
 | 请求循环、账本提交、历史与异常 | [request_runner.py](../roboodyssey/runtime/request_runner.py) |
 | 冻结契约修补和 mutation 决策 | [contracts/contextual.py](../roboodyssey/contracts/contextual.py) |
 | 完整请求成功判定及排除 | [requests.py](../roboodyssey/evaluation/requests.py) |

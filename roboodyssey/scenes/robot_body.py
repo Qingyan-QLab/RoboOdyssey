@@ -192,6 +192,9 @@ def robot_identity_for_config(config) -> dict:
 def _scene_version(scene):
     if hasattr(scene, "_requests"):
         scene = scene._requests
+    # Standalone Scene/Session bundles expose resources through their SceneSpec.
+    if hasattr(scene, "scene"):
+        scene = scene.scene
     if hasattr(scene, "data"):
         scene = scene.data
     if hasattr(scene, "version"):
@@ -202,7 +205,12 @@ def _scene_version(scene):
 def scene_robot_identity(scene) -> dict | None:
     """Return a declared scene body; absent declarations remain explicitly legacy."""
     scene = _scene_version(scene)
-    manifest = scene if isinstance(scene, dict) else scene.manifest
+    if isinstance(scene, dict):
+        manifest = scene
+    elif hasattr(scene, "manifest_path"):
+        manifest = json.loads(scene.manifest_path.read_text(encoding="utf-8"))
+    else:
+        manifest = scene.manifest
     identity = manifest.get("robot_profile")
     if identity is None:
         return None
@@ -236,7 +244,9 @@ def validate_scene_robot(scene, runtime_identity: dict, *, require_declared=Fals
         raise ValueError("scene robot_profile does not match runtime robot identity")
     if not isinstance(source, dict):
         import numpy as np
-        with np.load(source.path("navigation"), allow_pickle=False) as navigation:
+        navigation_path = (source.resources["navigation"] if hasattr(source, "resources")
+                           else source.path("navigation"))
+        with np.load(navigation_path, allow_pickle=False) as navigation:
             radius = float(np.asarray(navigation["robot_radius"]).item())
             if "robot_profile_json" in navigation:
                 encoded = json.loads(str(navigation["robot_profile_json"].item()))

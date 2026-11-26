@@ -9,8 +9,8 @@ from pathlib import Path
 import time
 from typing import Any, Callable
 
-from ..agents.agent_api import AgentProcess
-from ..agents.protocol import PROTOCOL_VERSION, OBSERVATION_STREAM
+from ..interaction.agent_api import AgentProcess
+from ..interaction.protocol import PROTOCOL_VERSION, OBSERVATION_STREAM
 from ..scenes.dataset_loader import SessionRecord
 from .observations import ObservationClock
 

@@ -6,7 +6,7 @@ is trusted Python code; context is private audit information, not model input.
 from copy import deepcopy
 from pathlib import Path
 
-from ..agents.protocol import validate_response
+from ..interaction.protocol import validate_response
 
 
 class InProcessPolicyAgent:
@@ -57,7 +57,8 @@ def make_isaac_env_factory(dataset, app, config=None):
     """Use benchmark run's scene, initial pose and lighting in an existing app."""
     from ..scenes.isaac_backend import make_env_factory
     from ..scenes.dataset_loader import BenchmarkDataset
-    if not isinstance(dataset, BenchmarkDataset):
+    from ..data.sources import ExternalDataset
+    if not isinstance(dataset, (BenchmarkDataset, ExternalDataset)):
         dataset = BenchmarkDataset(dataset)
     return make_env_factory(dataset, app, camera_config=config)
 

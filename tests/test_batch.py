@@ -17,7 +17,7 @@ class BatchTests(unittest.TestCase):
         c, inputs, plan = fixture_v3()
         write_dataset(root/'data', select_scenario(c, plan), c, inputs)
         config = {'schema_version': 1, 'python': sys.executable,
-                  'agent_argv': [sys.executable, '-m', 'roboodyssey.agents.random_agent'],
+                  'agent_argv': [sys.executable, '-m', 'agent_integrations.random.agent'],
                   'max_attempts': 2, 'attempt_timeout_seconds': timeout,
                   'jobs': [{'id': f'job_{i}', 'dataset': str(root/'data')} for i in range(jobs)]}
         prepared = build_plan(config)

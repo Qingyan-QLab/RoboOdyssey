@@ -178,28 +178,26 @@ class RobotBodyTests(unittest.TestCase):
             self.assertEqual(caught.exception.code, 2)
             dataset.assert_not_called()
 
-    def test_launch_resolves_profile_relative_to_configuration_and_forwards_it(self):
-        from roboodyssey.launch.simplenav import load_config, commands
-        config = {key: '.' for key in ('dataset', 'simplenav_root', 'checkpoint', 'agent_python', 'isaac_python', 'output')}
-        config['robot_profile'] = 'profile.json'
-        path = self.root / 'launch.json'
-        path.write_text(json.dumps(config))
-        parsed = load_config(path)
-        command = commands(parsed)['benchmark_argv']
-        self.assertEqual(command[command.index('--robot-profile') + 1], str(self.path))
+    def test_custom_profile_is_checked_in_cpu_dry_run(self):
+        from roboodyssey.run import main
+        dataset = SimpleNamespace(manifest={}, scene_ids=lambda: [])
+        with redirect_stdout(StringIO()) as output, patch('roboodyssey.run.BenchmarkDataset', return_value=dataset):
+            self.assertEqual(main(['--dataset', 'unused', '--robot-profile', str(self.path), '--dry-run']), 0)
+        identity = json.loads(output.getvalue().removeprefix('Robot: '))
+        self.assertEqual(identity['model_id'], 'example')
+        self.assertEqual(identity['robot_radius_m'], .3)
 
     def test_named_launch_selection_survives_sequence_child_arguments(self):
-        from roboodyssey.launch.simplenav import load_config, commands
         from roboodyssey.launch.sequences import child_arguments
-        config = {key: '.' for key in ('dataset','simplenav_root','checkpoint','agent_python','isaac_python','output')}
-        config.update(robot='stretch3', robot_assets='assets')
-        path = self.root/'launch.json'; path.write_text(json.dumps(config))
-        parsed = load_config(path)
-        command = child_arguments(commands(parsed)['benchmark_argv'], 'next_dataset', 'next_output')
+        command = child_arguments(['--dataset', 'original', '--robot', 'stretch3',
+                                   '--robot-assets', str(self.root/'assets'),
+                                   '--agent-cmd', 'python -m external_agent',
+                                   '--sensor-plugin', 'external_sensors'],
+                                  'next_dataset', 'next_output')
         self.assertEqual(command[command.index('--robot')+1], 'stretch3')
         self.assertEqual(command[command.index('--robot-assets')+1], str(self.root/'assets'))
-        config['robot_profile'] = 'profile.json'; path.write_text(json.dumps(config))
-        with self.assertRaisesRegex(ValueError, 'mutually exclusive'): load_config(path)
+        self.assertEqual(command[command.index('--agent-cmd')+1], 'python -m external_agent')
+        self.assertEqual(command[command.index('--sensor-plugin')+1], 'external_sensors')
 
     def test_official_rejects_cylinder_before_loading_data(self):
         from roboodyssey.run import main

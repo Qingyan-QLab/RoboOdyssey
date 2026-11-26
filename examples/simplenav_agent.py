@@ -1,9 +1,0 @@
-#!/usr/bin/env python3
-"""Source-tree compatibility entry; implementation is included in the wheel."""
-from pathlib import Path
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from roboodyssey.agents.simplenav_cli import _decode, _url_parts, main
-
-if __name__ == '__main__':
-    raise SystemExit(main())

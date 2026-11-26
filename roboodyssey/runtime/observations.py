@@ -2,7 +2,7 @@
 from copy import deepcopy
 import math
 import time
-from ..agents.protocol import OBSERVATION_STREAM, OBSERVATION_SEND_TIMEOUT
+from ..interaction.protocol import OBSERVATION_STREAM, OBSERVATION_SEND_TIMEOUT
 
 
 OBSERVATION_POLICY = {

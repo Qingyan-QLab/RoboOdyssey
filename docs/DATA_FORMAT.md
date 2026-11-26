@@ -1,5 +1,7 @@
 # 发布数据与独立运行契约
 
+此页描述现有发布包。直接加载外部 Scene 和 Session 目录／tar 的格式见 [SCENE_SESSION](SCENE_SESSION.md)。
+
 Benchmark 直接消费 `OSS/<scene_id>/session.tar`。安装、校验、执行、修补、评分和 CPU 测试均不需要
 Task Builder／Session Builder；manifest 的 `builder` 字段只记录数据来源。
 

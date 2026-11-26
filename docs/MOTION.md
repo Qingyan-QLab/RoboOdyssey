@@ -236,7 +236,7 @@ A 阶段若暂保留高层横移，须明确标为高层模式；只有完成 B 
 | [evaluation/navigation.py](../roboodyssey/evaluation/navigation.py) | 当前位置网格最短路；后续增加带朝向的可执行参考，与运行共用碰撞查询 |
 | [evaluation/transfer.py](../roboodyssey/evaluation/transfer.py) | 逻辑抓放成本；后续匹配真实站位、末端可达、携物轮廓与操作规则 |
 | [evaluation/task_metrics.py](../roboodyssey/evaluation/task_metrics.py) 及报告/复算入口 | 后续处理轨迹分段、版本化参考及指标；保持历史复算入口 |
-| [run.py](../roboodyssey/run.py)、[launch/simplenav.py](../roboodyssey/launch/simplenav.py) | 模式选择、配置传递、起点检查和身份记录；新模式不自动沿用原 official 资格 |
+| [run.py](../roboodyssey/run.py)、[launch/batch.py](../roboodyssey/launch/batch.py) | 模式选择、配置传递、起点检查和身份记录；新模式不自动沿用原 official 资格 |
 | robot 资源目录 | `profiles/stretch3.json`、轮廓/姿态、URDF/关节 USD 与控制配置；保持哈希和许可可追溯 |
 
 共享碰撞/运动模块的具体文件名在实施时确定，本次不新增这些运行模块。

@@ -4,7 +4,7 @@ Lengths use the configured default move step as one equivalent action; each
 pick/place attempt costs one action. Turns, observations and time have no cost.
 The reference is private and never supplied to the agent.
 """
-from ..agents.protocol import required_action_name as _name
+from ..interaction.protocol import required_action_name as _name
 from copy import deepcopy
 from collections import OrderedDict
 import hashlib

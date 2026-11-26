@@ -172,7 +172,7 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                 env = env_factory(
                     scene_id, deepcopy(canonical_state), session.session_id
                 )
-                context = load_runtime_context(paths["dataset_root"], paths.get("scene_version_root"))
+                context = session.runtime_context if session.runtime_context is not None else load_runtime_context(paths["dataset_root"], paths.get("scene_version_root"))
             events = RequestEvents(runner, env, output, scene_id, session.session_id)
             if runner.transition_callback:
                 runner.transition_callback()

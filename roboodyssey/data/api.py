@@ -15,6 +15,9 @@ def load_scene(source, *, revision=None):
     A scene-only collection may have no sequences. Assets must be embedded;
     published data never resolves private machine paths.
     """
+    from .sources import SceneSpec
+    if isinstance(source, SceneSpec):
+        raise ValueError("frozen scene loading requires SceneVersion; use BenchmarkSuite for SceneSpec inputs")
     if isinstance(source, SceneVersion):
         scene = source
     else:

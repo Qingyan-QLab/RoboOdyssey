@@ -14,23 +14,6 @@ from tests.test_contextual_requests import Env
 
 
 class PolicyRuntimeTests(unittest.TestCase):
-    def test_packaged_smoke_agent_stops_without_task_step_and_resets_per_task(self):
-        from roboodyssey.agents.random_agent import SmokeAgent
-        agent = SmokeAgent()
-        for task in ('first', 'second'):
-            request = {'type': 'step', 'scene_id': 'scene', 'session_id': 'session', 'task_id': task}
-            self.assertEqual([agent(request)['done'] for _ in range(5)], [False]*4+[True])
-
-    def test_packaged_smoke_agent_resets_for_an_independent_sequence(self):
-        from roboodyssey.agents.random_agent import SmokeAgent
-        agent = SmokeAgent()
-        request = {'type': 'step', 'scene_id': 'scene', 'session_id': 'session', 'task_id': 'same'}
-        for _ in range(5):
-            agent(request)
-        response = agent({'type': 'session_start', 'sequence_context': {'reset_memory': True, 'run_id': 'new'}})
-        self.assertEqual(response['sequence_reset_ack'], 'new')
-        self.assertFalse(agent(request)['done'])
-
     def test_private_policy_uses_real_success_and_capture_links(self):
         c, i, p = fixture_v3([task('ask', goal('book_red', 'answer', query='current_room'))])
         class SensorEnv(Env):

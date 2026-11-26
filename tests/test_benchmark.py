@@ -3,16 +3,9 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from roboodyssey.agents.protocol import validate_response
+from roboodyssey.interaction.protocol import validate_response
 from roboodyssey.scenes.dataset_loader import BenchmarkDataset
-from examples.holoagent_benchmark_server import (
-    CompositeHoloAgentPlanner,
-    FsrVlnPlanner,
-    LiveOvoPlanner,
-    ManipulationStateMachine,
-    assert_public_agent_request,
-)
-from examples.holoagent_agent import normalize_response
+
 
 
 class MetricTests(unittest.TestCase):
@@ -22,180 +15,14 @@ class MetricTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_response("step", {"action": {"action": "teleport"}})
 
-    def test_holoagent_gateway_rejects_private_ground_truth(self):
-        with self.assertRaisesRegex(ValueError, "private benchmark field"):
-            assert_public_agent_request(
-                {"type": "step", "ground_truth": {"answer": "x"}}
-            )
 
-    def test_holoagent_parses_public_point_navigation_target(self):
-        self.assertEqual(
-            FsrVlnPlanner._point_target("Go to the point at (19.03, -6.91) metres."),
-            (19.03, -6.91),
-        )
 
-    def test_holoagent_normalizes_common_action_aliases(self):
-        response = normalize_response(
-            {"action": {"action": "pickup", "arguments": {"target": "cup"}}}
-        )
-        self.assertEqual(response["action"]["action"], "pick")
-        self.assertEqual(response["action"]["target"], "cup")
 
-    def test_manipulation_policy_uses_public_names_and_feedback(self):
-        class Vlm:
-            def request(self, payload):
-                return {"action": {"action": "pick", "target": "reading book"}}
 
-        planner = ManipulationStateMachine(Vlm())
-        payload = {
-            "type": "step",
-            "task_type": "long_horizon",
-            "capabilities": ["manipulation"],
-            "task_id": "m",
-            "instruction": "Carry the reading book.",
-            "observation": {"holding_object": False},
-        }
-        self.assertEqual(
-            planner.plan(payload)["action"],
-            {"action": "pick", "target": "reading book"},
-        )
-        payload["observation"]["action_feedback"] = {"collision": True}
-        self.assertEqual(planner.plan(payload)["action"]["action"], "turn_left")
-        self.assertEqual(planner.plan(payload)["action"]["action"], "turn_right")
-        planner.reset()
-        self.assertEqual(planner.plan(payload)["action"]["action"], "turn_left")
 
-    def test_holoagent_rejects_private_action_handles(self):
-        with self.assertRaisesRegex(RuntimeError, "public names"):
-            normalize_response({"action": {"action": "pick", "object_id": "private"}})
 
-    def test_live_ovo_acknowledges_fresh_map_and_rejects_map_reuse(self):
-        planner = LiveOvoPlanner(SimpleNamespace())
-        payload = {
-            "type": "session_start",
-            "sequence_context": {"run_id": "first", "reset_memory": True},
-        }
-        self.assertEqual(planner.plan(payload)["sequence_reset_ack"], "first")
-        payload["sequence_context"] = {"run_id": "first", "reset_memory": False}
-        self.assertNotIn("sequence_reset_ack", planner.plan(payload))
-        payload["sequence_context"] = {"run_id": "next", "reset_memory": True}
-        with self.assertRaisesRegex(RuntimeError, "restart"):
-            planner.plan(payload)
 
-    def test_live_ovo_rejects_false_arrival_instead_of_idling(self):
-        mapper = SimpleNamespace(
-            obj_detect_track=None,
-            slam_backbone=None,
-            frame_id=2,
-            rgb_message_count=1,
-            depth_message_count=1,
-            pose_message_count=1,
-            processing_frame_id=2,
-            initialization_error=None,
-            processing_error=None,
-        )
-        planner = LiveOvoPlanner(mapper)
-        planner._task_instruction = "Find bookshelf"
-        planner._target = (1.0, 1.0)
-        planner._candidate_object_id = 7
-        payload = {
-            "type": "step",
-            "task_type": "long_horizon",
-            "capabilities": ["navigation"],
-            "instruction": "Find bookshelf",
-            "observation": {
-                "pose": {
-                    "position": [1.0, 1.0, 1.5],
-                    "orientation": [0.0, 0.0, 0.0, 1.0],
-                    "yaw_degrees": 0.0,
-                }
-            },
-        }
-        first = planner.plan(payload)
-        second = planner.plan(payload)
-        self.assertEqual(
-            first["gateway_status"], "candidate_reached_pending_evaluation"
-        )
-        self.assertEqual(second["gateway_status"], "false_candidate_rejected")
-        self.assertEqual(second["action"]["action"], "turn_left")
-        self.assertIn(7, planner._attempted_object_ids)
 
-    def test_live_ovo_explores_when_target_is_unresolved(self):
-        mapper = SimpleNamespace(
-            obj_detect_track=None,
-            slam_backbone=None,
-            frame_id=2,
-            rgb_message_count=1,
-            depth_message_count=1,
-            pose_message_count=1,
-            processing_frame_id=2,
-            initialization_error=None,
-            processing_error=None,
-        )
-        response = LiveOvoPlanner(mapper).plan(
-            {
-                "type": "step",
-                "task_type": "long_horizon",
-                "capabilities": ["navigation"],
-                "instruction": "Find bookshelf",
-            }
-        )
-        self.assertEqual(response["gateway_status"], "live_ovo_target_unresolved")
-        self.assertEqual(response["action"]["action"], "turn_left")
-
-    def test_holoagent_composite_routes_capabilities(self):
-        class Planner:
-            def __init__(self, response):
-                self.response = response
-                self.requests = []
-
-            def plan(self, payload):
-                self.requests.append(payload)
-                return dict(self.response)
-
-        class Vlm:
-            def __init__(self):
-                self.requests = []
-
-            def request(self, payload):
-                self.requests.append(payload)
-                if "qa" in payload.get("capabilities", []):
-                    return {"action": "no_op", "answer": "kitchen"}
-                return {"action": {"action": "pick", "target": "vase"}}
-
-        navigation, vlm = Planner({"action": {"action": "move_forward"}}), Vlm()
-        planner = CompositeHoloAgentPlanner(navigation, vlm)
-        self.assertEqual(
-            planner.plan(
-                {
-                    "type": "step",
-                    "task_type": "long_horizon",
-                    "capabilities": ["navigation"],
-                }
-            )["action"]["action"],
-            "move_forward",
-        )
-        self.assertEqual(
-            planner.plan(
-                {
-                    "type": "step",
-                    "task_type": "long_horizon",
-                    "capabilities": ["manipulation"],
-                }
-            )["action"]["action"],
-            "pick",
-        )
-        self.assertEqual(
-            planner.plan(
-                {
-                    "type": "step",
-                    "task_type": "long_horizon",
-                    "capabilities": ["qa"],
-                    "instruction": "Where?",
-                }
-            )["answer"],
-            "kitchen",
-        )
 
 
 class DatasetTests(unittest.TestCase):
@@ -286,7 +113,8 @@ class DatasetTests(unittest.TestCase):
         ):
             process.return_value.__enter__.return_value = Agent()
             self.assertEqual(
-                main(["--dataset", str(self.root), "--run-directory", str(output)]), 0
+                main(["--dataset", str(self.root), "--run-directory", str(output),
+                      "--agent-cmd", "python3 -m example.agent"]), 0
             )
         self.assertTrue(env.closed)
         self.assertTrue(app.closed)
