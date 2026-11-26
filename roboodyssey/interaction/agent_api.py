@@ -15,7 +15,6 @@ import sys
 import threading
 import time
 from collections import deque
-from pathlib import Path
 from typing import Any
 
 from .protocol import PROTOCOL_VERSION, OBSERVATION_STREAM, OBSERVATION_SEND_TIMEOUT, validate_response
@@ -30,7 +29,7 @@ class AgentProcess:
         self.process = subprocess.Popen(
             shlex.split(command), shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, bufsize=1,
-            cwd=Path(__file__).resolve().parents[1],
+            cwd=None,
             env=env,
         )
         self.timeout = timeout

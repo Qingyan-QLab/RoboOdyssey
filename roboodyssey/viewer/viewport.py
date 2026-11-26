@@ -1,4 +1,5 @@
 """Isaac viewport binding, imported without loading the simulator."""
+from __future__ import annotations
 def _bind_viewport_camera(viewport, camera_path: str) -> None:
     """Bind a Kit viewport to a USD camera using the Isaac Sim 6 API."""
     if viewport is None:

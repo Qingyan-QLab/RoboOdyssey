@@ -18,5 +18,5 @@ include = ["roboodyssey", "roboodyssey.*"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-"roboodyssey.agents" = ["protocol_schema.json"]
+"roboodyssey.interaction" = ["protocol_schema.json"]
 "roboodyssey.contracts" = ["LICENSE"]

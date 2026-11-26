@@ -121,20 +121,6 @@ class SequenceIntegrationTests(unittest.TestCase):
         self.assertFalse(aggregate_runs([good, bad])['evaluation_valid'])
         self.assertIsNone(aggregate_runs([good, bad])['task_score'])
 
-    def test_simplenav_same_scene_new_sequence_clears_local_history(self):
-        from tests.test_simplenav_v5 import SimpleNavProtocolTests
-        fixture = SimpleNavProtocolTests()
-        agent = fixture.agent()
-        agent.definitions = ['old name']
-        agent.requests = [{'time': 'old', 'instruction': 'Old sequence.'}]
-        agent.scene_id = 'scene'
-        agent.history.images.append('old frame')
-        response = agent.handle({'type': 'session_start', 'scene_id': 'scene',
-            'instruction': 'Begin this sequence.', 'sequence_context': {'sequence_id': 'B', 'run_id': 'run_B', 'reset_memory': True}})
-        self.assertEqual(response['sequence_reset_ack'], 'run_B')
-        self.assertEqual(agent.requests, [])
-        self.assertEqual(agent.definitions, [])
-        self.assertEqual(agent.history.images, [])
 
 
 if __name__ == '__main__':

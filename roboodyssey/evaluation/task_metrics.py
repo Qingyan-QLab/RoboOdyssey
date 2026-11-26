@@ -1,5 +1,5 @@
 """Versioned partial task scores; success remains a separate strict predicate."""
-from ..agents.protocol import required_action_name as _name
+from ..interaction.protocol import required_action_name as _name
 from copy import deepcopy
 import math
 from pathlib import Path

@@ -84,6 +84,7 @@ class SessionRecord:
     path: Path
     metadata: dict[str, Any]
     private_paths: dict[str, Path]
+    runtime_context: Any | None = None
 
     @property
     def session_id(self) -> str:

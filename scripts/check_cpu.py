@@ -20,7 +20,7 @@ sys.meta_path.insert(0,NoAcceleratorImports())
 root=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(root))
 if args.core:
-    patterns = ('test_benchmark.py', 'test_task_diagnostics.py', 'test_observations.py', 'test_evaluation_metrics.py', 'test_transfer_metrics.py', 'test_openai_api_agent.py')
+    patterns = ('test_benchmark.py', 'test_task_diagnostics.py', 'test_observations.py', 'test_evaluation_metrics.py', 'test_transfer_metrics.py', 'test_contextual_requests.py')
     suite = unittest.TestSuite(unittest.defaultTestLoader.discover(str(root/'tests'), pattern=p) for p in patterns)
     print('Core suite only: use the default check for frozen-data and launch integration tests.', flush=True)
 else:

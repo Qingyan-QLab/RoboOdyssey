@@ -66,3 +66,62 @@ def dataset_root(source: str | Path) -> Path:
     finally:
         if staging.exists():
             shutil.rmtree(staging)
+
+
+def resource_root(source: str | Path, manifest_name: str) -> Path:
+    """Resolve a standalone Scene/Session directory or safe tar into the cache."""
+    if manifest_name not in {"scene_resources.json", "session_resources.json"}:
+        raise ValueError("unsupported resource manifest")
+    source = Path(source).expanduser().resolve()
+
+    def locate(folder: Path) -> Path:
+        candidates = [folder, *(p for p in folder.iterdir() if p.is_dir())]
+        matches = [p for p in candidates if (p / manifest_name).is_file()]
+        if len(matches) != 1:
+            raise ValueError(f"expected one {manifest_name} under {folder}")
+        return matches[0]
+
+    if source.is_dir():
+        return locate(source)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    if not tarfile.is_tarfile(source):
+        raise ValueError(f"resource source must be a directory or tar archive: {source}")
+    digest = sha256_file(source)
+    cache_base = Path(os.environ.get("BENCHMARK_DATA_CACHE",
+        str(Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) /
+            "longterm-indoor-benchmark/datasets"))).expanduser().resolve() / "resources"
+    cache_base.mkdir(parents=True, exist_ok=True)
+    target = cache_base / digest
+    if target.exists():
+        return locate(target)
+    staging = Path(tempfile.mkdtemp(prefix=f".{digest[:12]}-", dir=cache_base))
+    try:
+        seen = set()
+        with tarfile.open(source, "r:*") as archive:
+            for member in archive:
+                name = PurePosixPath(member.name)
+                if name.is_absolute() or ".." in name.parts or "\\" in member.name:
+                    raise ValueError(f"archive path escapes resource root: {member.name}")
+                if not member.isdir() and not member.isfile():
+                    raise ValueError(f"archive links/special files are unsupported: {member.name}")
+                destination = staging.joinpath(*name.parts)
+                if member.isdir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                if name.as_posix() in seen:
+                    raise ValueError(f"duplicate archive member: {member.name}")
+                seen.add(name.as_posix())
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with archive.extractfile(member) as stream, destination.open("xb") as output:
+                    shutil.copyfileobj(stream, output)
+        locate(staging)
+        try:
+            staging.rename(target)
+        except OSError:
+            if not target.is_dir():
+                raise
+        return locate(target)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)

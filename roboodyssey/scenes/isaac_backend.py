@@ -12,7 +12,7 @@ from ..viewer.viewport import _bind_viewport_camera, _place_viewport_window, _sy
 
 def make_env_factory(
     dataset: BenchmarkDataset, app, viewer: bool = False, overview_holder: dict | None = None,
-    camera_config=None, holoagent_sensor_topics=None, video_options=None,
+    camera_config=None, sensor_bridge_factory=None, sensor_contract=None, video_options=None,
 ):
     import numpy as np
     from .isaac_env import EnvConfig, IsaacVLNEnv
@@ -25,7 +25,7 @@ def make_env_factory(
         env = IsaacVLNEnv(
             dataset.scene_asset(scene_id),
             camera_config or EnvConfig(camera_prim_path="/World/LongTermBenchmark/Camera"),
-            holoagent_sensor_topics=holoagent_sensor_topics,
+            sensor_bridge_factory=sensor_bridge_factory, sensor_contract=sensor_contract,
         )
         try:
             env.configure_scene(dataset.scene_metadata(scene_id), navigation,
@@ -167,10 +167,11 @@ class IsaacBackend:
             self.app,
         )
 
-    def scene_factory(self, dataset, *, camera_config, holoagent_sensor_topics, video_options):
+    def scene_factory(self, dataset, *, camera_config, sensor_bridge_factory=None, sensor_contract=None, video_options=None):
         return make_env_factory(
             dataset, self.app, viewer=self.viewer, overview_holder=self.overview,
-            camera_config=camera_config, holoagent_sensor_topics=holoagent_sensor_topics,
+            camera_config=camera_config, sensor_bridge_factory=sensor_bridge_factory,
+            sensor_contract=sensor_contract,
             video_options=video_options,
         )
 

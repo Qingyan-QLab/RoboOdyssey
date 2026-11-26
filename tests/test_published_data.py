@@ -34,7 +34,7 @@ class PublishedDataTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'select'):
                     BenchmarkDataset(archive)
                 data = BenchmarkDataset(archive, sequence_id='sequence_A')
-                self.assertTrue(data.root.is_relative_to(root/'cache'))
+                self.assertTrue(data.root.is_relative_to((root/'cache').resolve()))
                 self.assertEqual(len(data.sessions('synthetic_demo')), 2)
                 self.assertEqual(len(select_sequences(archive)), 2)
                 resolved = dataset_root(archive)
