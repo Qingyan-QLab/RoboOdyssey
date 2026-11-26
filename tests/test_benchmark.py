@@ -67,6 +67,7 @@ class DatasetTests(unittest.TestCase):
         self.assertIn("synthetic_demo: 1 sessions", output.getvalue())
 
     def test_cli_executes_current_sequence_and_closes_simulator(self):
+        from importlib import import_module
         import json
         from contextlib import redirect_stdout
         from io import StringIO
@@ -74,6 +75,10 @@ class DatasetTests(unittest.TestCase):
         from unittest.mock import patch
         from roboodyssey.run import main
         from tests.test_contextual_requests import Agent, Env
+
+        # Load before patch.dict snapshots sys.modules; otherwise its rollback
+        # leaves a stale parent-package attribute that Python 3.10 mocks follow.
+        backend_module = import_module("roboodyssey.scenes.isaac_backend")
 
         class App:
             def __init__(self, options):
@@ -105,8 +110,8 @@ class DatasetTests(unittest.TestCase):
             patch.dict("sys.modules", modules),
             patch("signal.signal"),
             patch("roboodyssey.run.AgentProcess") as process,
-            patch(
-                "roboodyssey.scenes.isaac_backend.make_env_factory",
+            patch.object(
+                backend_module, "make_env_factory",
                 return_value=lambda *args: env,
             ),
             redirect_stdout(StringIO()),
