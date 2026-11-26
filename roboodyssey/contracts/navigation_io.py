@@ -59,6 +59,9 @@ def write_navigation_npz(path: str | Path, navigation: dict) -> None:
     if navigation.get('environment_setup'):
         setup = json.dumps(navigation['environment_setup'], sort_keys=True, separators=(',', ':'))
         arrays['environment_setup_json'] = _npy(setup, '<U' + str(len(setup)), ())
+    if navigation.get("robot_profile") is not None:
+        profile = json.dumps(navigation["robot_profile"], sort_keys=True, separators=(",", ":"))
+        arrays["robot_profile_json"] = _npy(profile, "<U" + str(len(profile)), ())
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, data in arrays.items():
             info = zipfile.ZipInfo(name + ".npy", date_time=(1980, 1, 1, 0, 0, 0))
@@ -74,4 +77,6 @@ def read_navigation_npz(path: str | Path) -> dict:
         result = {name: archive[name].tolist() for name in archive.files}
     if 'environment_setup_json' in result:
         result['environment_setup'] = json.loads(result.pop('environment_setup_json'))
+    if 'robot_profile_json' in result:
+        result['robot_profile'] = json.loads(result.pop('robot_profile_json'))
     return result

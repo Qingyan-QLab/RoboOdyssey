@@ -15,6 +15,8 @@ RoboOdyssey 是面向具身智能体的长期、多场景仿真与评测项目�
 正式数据单独发布，Benchmark 直接读取 `OSS/<scene_id>/session.tar` 或解包目录。
 安装、运行和测试均不依赖 Task Builder／Session Builder 源码。
 
+[预期与改动规划（待审阅）](docs/EXPECTATIONS_AND_PLAN.md)：三库职责、公共模块、接口与分阶段验收；尚未实施。
+
 ## 1. 安装
 
 主机环境需要 Python 3.10+，用于数据校验、运行预检、结果分析和 CPU 测试。版本记录见 [变更日志](CHANGELOG.md)。
@@ -78,6 +80,12 @@ export BENCHMARK_DATA_CACHE=/path/to/dataset-cache
 ```
 
 ## 3. 运行
+
+默认使用随 wheel 分发的 Stretch3（0.29 m 碰撞圆、1.50 m 虚拟相机），正式评测固定该版本。
+显式 `--robot cylinder` 可运行原非官方基线，
+也支持 `tiago`、`turtlebot3_burger`、`turtlebot4`、`go2`、`g1`。
+`.venv/bin/python -m roboodyssey robots --check` 校验本地模型；资产目录、SimpleNav 配置和运动边界见
+[本体选择](docs/ROBOTS.md)。
 
 ### SimpleNav
 
@@ -195,3 +203,5 @@ results/experiment_<time>_<id>/
 
 第三方组件与外部资产的声明见 [NOTICE](NOTICE)。从生成端移入的运行时辅助代码保留原有的 [MIT 许可](roboodyssey/contracts/LICENSE)。
 Isaac Sim、外部模型与另行发布的场景数据适用各自的许可和分发条款。
+
+三库公共调用与 wheel 独立入口见 [PUBLIC_API](docs/PUBLIC_API.md)。当前发行版本为 `0.2.1`，导入名为 `roboodyssey`；只保证当前冻结输出格式互通。

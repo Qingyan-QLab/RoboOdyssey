@@ -13,12 +13,12 @@
 Set up a local environment with `./scripts/bootstrap.sh` and activate `.venv`. Run these checks before submitting changes:
 
 ```bash
-./scripts/check_env.sh
-python3 -m unittest discover -s tests -v
-python3 -m roboodyssey.run --dry-run
+python3 -m roboodyssey check
+python3 -m roboodyssey inventory --check
+python3 -m roboodyssey run --dataset /path/to/sequence --dry-run
 ```
 
-For an Isaac Sim smoke run, set `ISAACSIM_ROOT` and run `./scripts/run_smoke.sh`; use `--viewer` only with a graphical environment. Validate datasets with `python3 scripts/validate_dataset.py <path>` and create checksums with `python3 scripts/make_checksums.py <path>`.
+For an Isaac Sim smoke run, set `ISAACSIM_ROOT` and run `./run_benchmark.sh --dataset /path/to/sequence`; use `--viewer` only with a graphical environment. Validate datasets with `python3 -m roboodyssey validate /path/to/sequence`.
 
 ## Coding Style & Naming Conventions
 
@@ -30,7 +30,7 @@ Tests use `unittest` and should run without GPU or Isaac Sim. Add focused `test_
 
 ## Commit & Pull Request Guidelines
 
-The history currently contains only an initial commit, so no established message format is available. Use short, imperative subjects (for example, `Validate session dependencies`) and keep unrelated changes separate. Pull requests should explain behavior and schema changes, link issues, list validation commands and results, and include screenshots or logs when viewer or output behavior changes. Do not commit checkpoints, caches, `results/`, or unlicensed large scene assets; update `docs/` and checksums when contracts change.
+Use short, imperative commit subjects (for example, `Validate session dependencies`) and keep unrelated changes separate. Pull requests should explain behavior and schema changes, link issues, list validation commands and results, and include screenshots or logs when viewer or output behavior changes. Do not commit checkpoints, caches, `results/`, or unlicensed large scene assets; update `docs/` and checksums when contracts change.
 
 ## Data and Environment Notes
 

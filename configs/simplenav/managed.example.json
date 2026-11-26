@@ -35,5 +35,6 @@
   "auto_analyze": true,
   "sequences": [
     "seq_0001"
-  ]
+  ],
+  "robot": "stretch3"
 }

@@ -48,7 +48,7 @@ def inventory(root, files):
         check_file(inside(root, relative), expected)
 
 
-def collection(root):
+def collection(root, *, require_sequences=True):
     root = dataset_root(root)
     value = read(root/'scene_manifest.json')
     if value.get('schema_version') != 1 or value.get('format') != 'cl_scene_collection_v1':
@@ -56,8 +56,10 @@ def collection(root):
     identity(value['scene_id'])
     for group, directory, filename in (('versions', 'scene_versions', 'scene_version.json'),
                                         ('sequences', 'sequences', 'dataset_manifest.json')):
-        if not isinstance(value.get(group), dict) or not value[group]:
+        if not isinstance(value.get(group), dict) or (not value[group] and (group != 'sequences' or require_sequences)):
             raise ValueError(f'collection has no {group}')
+        if group == 'sequences' and not require_sequences:
+            continue  # Scene preparation must not depend on unrelated sequences.
         for key, entry in value[group].items():
             identity(key)
             if entry.get('manifest') != f'{directory}/{key}/{filename}':
@@ -88,7 +90,7 @@ def select_sequences(source, ids=None):
 class SceneVersion:
     def __init__(self, root, revision, *, expected_hash):
         self.root = dataset_root(root)
-        index = collection(self.root)
+        index = collection(self.root, require_sequences=False)
         self.revision = identity(revision)
         entry = index['versions'].get(revision)
         if entry is None:
@@ -101,6 +103,28 @@ class SceneVersion:
         if (m.get('schema_version') != 1 or m.get('format') != 'cl_scene_version_v1'
                 or m.get('scene_id') != index['scene_id'] or m.get('revision') != revision):
             raise ValueError('scene revision identity/version mismatch')
+        self._validate()
+
+    @classmethod
+    def from_directory(cls, directory, *, expected_hash=None):
+        """Read one immutable scene revision without a sequence collection."""
+        self = cls.__new__(cls)
+        self.directory = Path(directory).resolve()
+        self.root = self.directory
+        path = self.directory/'scene_version.json'
+        self.manifest_hash = expected_hash or sha256_file(path)
+        check_file(path, self.manifest_hash)
+        self.manifest = read(path)
+        m = self.manifest
+        self.revision = identity(m.get('revision'))
+        identity(m.get('scene_id'))
+        if m.get('schema_version') != 1 or m.get('format') != 'cl_scene_version_v1':
+            raise ValueError('unsupported scene revision format')
+        self._validate()
+        return self
+
+    def _validate(self):
+        m = self.manifest
         inventory(self.directory, m.get('files'))
         for key, relative in m['artifacts'].items():
             if relative not in m['files']:
@@ -109,6 +133,15 @@ class SceneVersion:
         asset = m.get('scene_asset')
         if asset:
             check_file(self.asset_path(), asset['sha256'])
+        from ..scenes.robot_body import scene_robot_identity, validate_scene_robot
+        robot = scene_robot_identity(self)
+        if robot is not None:
+            validate_scene_robot(self, robot)
+        elif read_navigation_npz(self.path("navigation")).get("robot_profile") is not None:
+            raise ValueError("navigation robot_profile is missing from scene manifest")
+        initial = read(self.path('initial_state'))
+        if digest(initial) != m.get('initial_state_sha256'):
+            raise ValueError('initial robot state checksum mismatch')
 
     def path(self, key):
         return inside(self.directory, self.manifest['artifacts'][key])
@@ -126,7 +159,7 @@ class SceneVersion:
 
 
 class SequenceData:
-    def __init__(self, root):
+    def __init__(self, root, *, scene=None):
         self.root = Path(root).resolve()
         self.manifest = read(self.root/'dataset_manifest.json')
         m = self.manifest
@@ -135,15 +168,22 @@ class SequenceData:
                 or m.get('runtime_contract') != dict(name='contextual_requests', version=3)):
             raise ValueError('unsupported frozen dataset layout/runtime contract')
         sid = identity(m.get('sequence_id'))
-        if self.root.name != sid or self.root.parent.name != 'sequences':
-            raise ValueError('shared sequence must be under collection/sequences/sequence_id')
         ref = m['scene_reference']
-        self.version = SceneVersion(self.root.parent.parent, ref['revision'], expected_hash=ref['manifest_sha256'])
+        if scene is None:
+            if self.root.name != sid or self.root.parent.name != 'sequences':
+                raise ValueError('shared sequence must be under collection/sequences/sequence_id; or supply scene explicitly')
+            self.version = SceneVersion(self.root.parent.parent, ref['revision'], expected_hash=ref['manifest_sha256'])
+            index = collection(self.root.parent.parent)['sequences'].get(sid)
+            if not index or index['revision'] != ref['revision']:
+                raise ValueError('sequence differs from collection revision')
+        else:
+            if not isinstance(scene, SceneVersion):
+                raise TypeError('scene must be a validated SceneVersion')
+            self.version = scene
+            if scene.reference() != ref:
+                raise ValueError('sequence and explicit scene revision/hash differ')
         if self.version.manifest['scene_id'] != m['scene_id']:
             raise ValueError('sequence and shared scene identities differ')
-        index = collection(self.root.parent.parent)['sequences'].get(sid)
-        if not index or index['revision'] != ref['revision']:
-            raise ValueError('sequence differs from collection revision')
         for key in ('scene_metainfo', 'scene_understanding', 'navigation', 'manipulation',
                     'public_language_profile', 'environment_setup'):
             if m.get(key) != {'scope': 'scene_version', 'key': key}:

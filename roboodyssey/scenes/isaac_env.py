@@ -8,15 +8,18 @@ dataset validation and dry-runs remain usable on CPU-only machines.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from copy import deepcopy
 import json
 import math
 from pathlib import Path
 from typing import Any
+from .robot_body import RobotBodyConfig, default_robot_body
+from .lighting import LightingConfig
 
 
 AVATAR_INTERACTION = {
+    'version': 'avatar_fixed_offset_v1',
     'pick_radius_m': 1.5, 'place_offset_m': .8,
     'held_offset': [.75, .35, -.22],
 }
@@ -32,12 +35,25 @@ class EnvConfig:
     step_seconds: float = 1.0 / 30.0
     move_step: float = 0.25
     turn_step_degrees: float = 15.0
-    robot_radius: float = 0.1
+    robot_radius: float | None = None
     max_move_distance: float = 10.0
     max_turn_degrees: float = 720.0
     collision_backoff: float = 0.1
     collision_sample_step: float = 0.05
     door_open_angle_degrees: float = 90.0
+    robot_body: RobotBodyConfig | None = field(default_factory=default_robot_body)
+    lighting: LightingConfig = field(default_factory=LightingConfig)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.lighting, LightingConfig):
+            raise TypeError('lighting must be a LightingConfig')
+        if self.robot_body is not None:
+            if self.robot_radius is not None and not math.isclose(self.robot_radius, self.robot_body.robot_radius_m, rel_tol=0, abs_tol=1e-9):
+                raise ValueError("robot_radius conflicts with robot_body; use a complete custom profile or robot_body=None")
+            object.__setattr__(self, "robot_radius", self.robot_body.robot_radius_m)
+            object.__setattr__(self, "camera_height", self.robot_body.camera_height_m)
+        elif self.robot_radius is None:
+            object.__setattr__(self, "robot_radius", .1)
 
 
 def _quat_to_yaw(quaternion: list[float]) -> float:
@@ -70,24 +86,11 @@ class IsaacVLNEnv:
         self.scene_asset = Path(scene_asset).resolve()
         if not self.scene_asset.is_file():
             raise FileNotFoundError(self.scene_asset)
-        context = omni.usd.get_context()
-        context.open_stage(str(self.scene_asset))
         # open_stage schedules USD/RTX loading asynchronously. Mutating prims
         # while the loader thread is still populating the stage can crash in
         # librtx.scenedb rather than raising a Python exception.
-        import omni.kit.app
-        app = omni.kit.app.get_app()
-        stable_frames = 0
-        for _ in range(6000):
-            app.update()
-            stable_frames = stable_frames + 1 if context.get_stage_loading_status()[2] <= 0 else 0
-            if stable_frames >= 12:
-                break
-        else:
-            raise TimeoutError(f"timed out loading Isaac Sim stage: {self.scene_asset}")
-        self.stage = context.get_stage()
-        if self.stage is None:
-            raise RuntimeError(f"Isaac Sim could not open {self.scene_asset}")
+        from .camera import open_scene_stage, create_camera
+        self.stage, app = open_scene_stage(self.scene_asset)
 
         self._metadata: dict[str, Any] = {}
         self._objects: dict[str, dict[str, Any]] = {}
@@ -130,21 +133,20 @@ class IsaacVLNEnv:
         self._overview_marker = None
         self._overview_window = None
         self._metadata_bounds = None
-        self.camera = Camera(
-            prim_path=self.config.camera_prim_path,
-            resolution=self.config.resolution,
-            frequency=-1,
-        )
         # Isaac Sim's Camera initializes an RGB annotator by default.  The
         # optional HoloAgent bridge creates its own RGB-D render product, so
         # the benchmark observation protocol does not need to carry depth.
-        self.camera.initialize(attach_rgb_annotator=True)
+        self.camera = create_camera(self.config.camera_prim_path, self.config.resolution)
         try:
             self.camera.add_distance_to_image_plane_to_frame()
         except (AttributeError, RuntimeError):
             pass
         self._configure_camera_intrinsics()
         self._configure_scene_rendering()
+        self._robot_body = None
+        if self.config.robot_body is not None:
+            from .robot_body import KinematicRobotBody
+            self._robot_body = KinematicRobotBody(self.stage, self.config.robot_body)
         if holoagent_sensor_topics is not None:
             from .holoagent_sensor_bridge import IsaacSimHoloAgentSensorBridge
             self._holoagent_sensor_bridge = IsaacSimHoloAgentSensorBridge(
@@ -233,6 +235,15 @@ class IsaacVLNEnv:
         self, metadata: dict[str, Any], navigation: dict[str, Any],
         manipulation: dict[str, Any], state: dict[str, Any],
     ) -> None:
+        encoded_profile = navigation.get("robot_profile_json")
+        declared_profile = (json.loads(str(encoded_profile)) if encoded_profile is not None
+                            else navigation.get("robot_profile"))
+        if declared_profile is not None:
+            from .robot_body import robot_identity_for_config, validate_scene_robot
+            validate_scene_robot({"robot_profile": declared_profile}, robot_identity_for_config(self.config))
+            if not math.isclose(float(navigation["robot_radius"]), declared_profile["robot_radius_m"],
+                                rel_tol=0, abs_tol=1e-9):
+                raise ValueError("navigation robot_radius differs from declared robot_profile")
         self._metadata = metadata
         self._objects = {str(key): dict(value) for key, value in state.get("objects", {}).items()}
         self._prim_paths = {str(raw["object_id"]): str(raw["prim_path"])
@@ -468,14 +479,18 @@ class IsaacVLNEnv:
             self._held_object = None
         self._refresh_vlm_navigation()
 
-    def _refresh_vlm_navigation(self) -> None:
+    def _refresh_vlm_navigation(self, *, measured_state=None) -> None:
         """Keep occupancy consistent with actual moved/held objects in VLM runs."""
         if not getattr(self, '_environment_setup', None):
             return
 
         from roboodyssey.contracts.raster import derive_navigation
-        from roboodyssey.contracts.state import geometry
-        objects = [{**obj, 'geometry': geometry(obj)} for obj in self._objects.values()
+        # Collision and scoring must rasterize the same measured geometry.
+        # Authored metadata can differ at a cell boundary even after an exact
+        # USD placement (float mesh extents versus double transforms).
+        measured = (measured_state if measured_state is not None else self.runtime_state_v5())['objects']
+        self._collision_geometry = {oid: obj['geometry'] for oid, obj in measured.items()}
+        objects = [obj for obj in measured.values()
                    if not obj.get('held') and obj['object_id'] != self._held_object]
         grid = derive_navigation(self._metadata['rooms'], objects, resolution=self._resolution,
                                  robot_radius=float(self._navigation['robot_radius']),
@@ -579,6 +594,9 @@ class IsaacVLNEnv:
             orientation=_camera_quaternion(self._yaw, self._pitch),
             camera_axes="world",
         )
+        body = getattr(self, "_robot_body", None)
+        if body is not None:
+            body.sync(self._agent_position, self._yaw)
 
     def get_agent_pose(self) -> dict[str, Any]:
         return {"position": self._agent_position.tolist(), "orientation": _yaw_quaternion(self._yaw),
@@ -666,7 +684,8 @@ class IsaacVLNEnv:
         """
         radius = max(0.0, float(self.config.robot_radius))
         if self._held_object:
-            bounds = self._objects.get(self._held_object, {}).get("geometry", {}).get("world_aabb", {})
+            measured = getattr(self, '_collision_geometry', {}).get(self._held_object)
+            bounds = (measured or self._objects.get(self._held_object, {}).get("geometry", {})).get("world_aabb", {})
             minimum, maximum = bounds.get("min"), bounds.get("max")
             if minimum and maximum and len(minimum) >= 2 and len(maximum) >= 2:
                 extent_x = max(0.0, float(maximum[0]) - float(minimum[0]))

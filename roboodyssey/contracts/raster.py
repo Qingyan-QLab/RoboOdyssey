@@ -60,7 +60,12 @@ def _inflate_occupancy(grid: list[list[int]], cells: int) -> list[list[int]]:
     return result
 
 def derive_navigation(rooms: list[dict], objects: list[dict], *, resolution: float = .05,
-                      robot_radius: float = .25, environment_setup: dict | None = None) -> dict:
+                      robot_radius: float | None = None, environment_setup: dict | None = None) -> dict:
+    profile = None
+    if robot_radius is None:
+        from ..scenes.robot_body import default_robot_identity
+        profile = default_robot_identity()
+        robot_radius = profile['robot_radius_m']
     if resolution <= 0 or robot_radius < 0:
         raise ValueError('navigation dimensions must be positive')
     points = [point for room in rooms for point in room.get("boundary_polygon", [])]
@@ -129,4 +134,5 @@ def derive_navigation(rooms: list[dict], objects: list[dict], *, resolution: flo
             "static_occupancy": static, "static_base_occupancy": static_base,
             "dynamic_occupancy": dynamic,
             "room_labels": labels, "room_ids": room_ids,
-            **({'environment_setup': deepcopy(environment_setup)} if environment_setup else {})}
+            **({'environment_setup': deepcopy(environment_setup)} if environment_setup else {}),
+            **({'robot_profile': profile} if profile is not None else {})}

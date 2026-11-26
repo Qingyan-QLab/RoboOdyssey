@@ -28,6 +28,7 @@ v5 `contextual_requests` 的所有完整请求都使用 step 循环，response_m
 ```
 
 Agent 应按公开 capabilities 区分导航、操作和问答，不能把所有 long_horizon 请求都视为不支持。
+这些任务能力字段尚不等于按本体约束的底盘动作集；当前动作执行与后续 Stretch 适配见 [运动策略](MOTION.md)。
 动作编码示例见 [Agent 接入指南](AGENT_INTEGRATION.md)。v5 抓取使用公开 target 名称，
 如 `{"action":"pick","target":"reading book"}`，不接受私有 object_id／room_id。
 问答动作与计分见 [成功条件](RULES.md#scoring)：仅按答案正确性计分，不要求观察取证。

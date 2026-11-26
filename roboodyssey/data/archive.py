@@ -14,7 +14,7 @@ from ..artifacts.layout import sha256_file
 def discover_root(folder: Path) -> Path:
     """Accept a collection, a sequence, or the published wrapper directory."""
     for candidate in (folder, folder/'session/preparation/collection', folder/'preparation/collection'):
-        if any((candidate/name).is_file() for name in ('scene_manifest.json', 'dataset_manifest.json')):
+        if any((candidate/name).is_file() for name in ('scene_manifest.json', 'dataset_manifest.json', 'scene_version.json')):
             return candidate
     raise ValueError(f'no scene_manifest.json or dataset_manifest.json under {folder}')
 

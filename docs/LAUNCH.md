@@ -8,6 +8,7 @@
 | `validate <dataset>` | 归档／场景集合校验 | 否 |
 | `doctor --dataset <dataset>` | 数据与主机依赖检查 | 否；`--require-isaac` 另检查 SDK |
 | `run --dataset <dataset> --dry-run` | 序列与任务预览 | 否 |
+| `robots --check` | 列出圆柱和六种机器人，校验本地资产 | 否 |
 | `preflight --config <json>` | SimpleNav 配置、源码、数据、动作统计、CPU 编码器预检 | 否 |
 | `experiment --config <json>` | 同预检 | 否 |
 | `experiment --config <json> --execute` | 管理模型与 Isaac、记录状态、自动分析和清理 | 是 |
@@ -33,6 +34,15 @@ collision_reset_threshold（5，0 为关闭）、url、gpu、viewer、record_vid
 video_fps、video_event_seconds、ffmpeg、auto_analyze（true）。
 `sequences` 是不重复的序列 ID 列表，与 `all_sequences` 互斥。
 场景集合中只有一条序列时可省略选择，多条时必须明确选择。
+
+`robot` 默认是 `stretch3`，也可选 `cylinder`、`tiago`、`turtlebot3_burger`、`turtlebot4`、`go2`、`g1`。
+可选 `robot_assets` 指向包含 profiles/ 和 usd/ 的目录；本工作区配置可填 `../../../robot`。
+通用入口对应 `--robot stretch3 --robot-assets ../robot`。未指定资产目录时读取
+`BENCHMARK_ROBOT_ASSETS`，否则使用 wheel 自带的 Stretch3 资产。其他命名本体需外部资产；显式圆柱不需要资产。
+预检和 dry-run 校验所选 USD 包的 SHA-256；运行身份记录本体、半径、相机高度和资产哈希。
+自定义 `robot_profile` / `--robot-profile` 继续支持，与 `robot`、`robot_assets` 互斥。
+相对路径同样基于配置文件目录；命令行路径基于当前目录。
+型号、运动边界和使用例子见 [本体选择](ROBOTS.md)，评分资格见 [RULES](RULES.md#embodiment)。
 
 `environment` 设置 Isaac／Agent 子进程环境，可指定 DISPLAY、XAUTHORITY 等。
 管理器不把自身 CUDA_VISIBLE_DEVICES 或 CONDA_PREFIX 隐式带入 Isaac；需要时由 environment 显式指定。

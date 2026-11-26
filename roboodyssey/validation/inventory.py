@@ -9,6 +9,8 @@ DOCUMENT = 'docs/FILE_MAP.md'
 # This is the one maintained purpose registry. Tree, links and symbols
 # are derived from files, so documentation cannot silently omit a new source.
 PURPOSES = {
+    'docs/validation/pr_integration_20261126.json': '当前 PR 的 CPU、隔离安装和三库 Isaac 联合验收；含版本、资产身份与可复现命令。',
+    '.gitattributes': '保留固定 SHA-256 的生成 USD 层字节，仅豁免这些资产的文件末尾空行检查。',
     '.gitignore': '实验结果、本地配置、环境、缓存和资产的版本控制排除规则。',
     '.github/workflows/test.yml': 'GitHub Actions 的完整独立 CPU 回归、视频工具安装与清单检查。',
     'AGENTS.md': '仓库贡献和验证约定。',
@@ -28,6 +30,9 @@ PURPOSES = {
     'docs/RULES.md': '运行与评分规则的唯一维护入口：连续性、预算、正式配置、修补、成功/排除、聚合、导航诊断。',
     'docs/SIMPLENAV_V5.md': 'SimpleNav v5 接入、受控诊断、取证及录像复现。',
     'docs/LAUNCH.md': '实验配置、预检、进程管理、终止和来源记录。',
+    'docs/ROBOTS.md': '圆柱与六种机器人选择、资产路径、运动边界及配置用法。',
+    'docs/MOTION.md': '运动策略现状审计与 Stretch 预期设计：动作适配、碰撞、抓放、评分及分阶段验收。',
+    'docs/EXPECTATIONS_AND_PLAN.md': '待审阅的职责与改动规划：三库数据约定、公共模块、状态边界及迁移验收。',
     'docs/OUTPUTS.md': '实验/运行/Session 的输出文件、证据引用和当前布局契约。',
     DOCUMENT: '自动生成的完整源码目录、文件用途。',
     'roboodyssey/__main__.py': 'python -m roboodyssey 的入口，转发 CLI。',
@@ -70,6 +75,9 @@ PURPOSES = {
     'roboodyssey/validation/inventory.py': '静态扫描文件、用途和主要定义，生成/检查本页；不导入被扫描模块。',
     'roboodyssey/viewer/viewport.py': 'Isaac 视口相机绑定、窗口布局与渲染同步。',
     'roboodyssey/viewer/viewer_overlay.py': 'GUI 任务、状态、成功/失败和 reset 信息覆盖层。',
+
+    'roboodyssey/scenes/robot_body.py': '本体选择、CPU 列表/校验、USD 配置与资产身份；高层身体位置/朝向同步。',
+    'tests/test_robot_body.py': '默认 Stretch3、官方身份、场景半径匹配、多本体选择、资产完整性和相机/身体分离回归。',
     'examples/random_agent.py': '随机动作 Agent，用于协议/仿真冒烟验证。',
     'examples/simplenav_agent.py': 'SimpleNav JSONL 协议入口，复用 agents/simplenav.py。',
     'examples/openai_compatible_vlm_agent.py': 'OpenAI 兼容视觉语言服务的 Agent 示例。',
@@ -109,6 +117,35 @@ PURPOSES = {
     'roboodyssey/contracts/requests.py': '完整请求的实际历史记录、旧契约修补和 mutation 放置校验。',
     'roboodyssey/contracts/navigation.py': '地面网格、对象标签、接近位置、路径和 mutation 连通性校验。',
     'roboodyssey/contracts/state.py': '对象真实几何、位置签名、冻结参考缓存和哈希。',
+
+    'roboodyssey/agents/random_agent.py': '随 wheel 分发的确定性协议冒烟 Agent。',
+    'roboodyssey/agents/simplenav_cli.py': '随 wheel 分发的 SimpleNav JSONL 命令入口。',
+    'roboodyssey/agents/openai_api_cli.py': '随 wheel 分发的视觉 API JSONL 命令入口。',
+    'roboodyssey/contracts/planned_history.py': '预计事件与位置账本；明确不代表执行观察。',
+    'roboodyssey/contracts/planning.py': '复用请求修补与几何的 CPU 预计序列推演；不可冒充正式参考。',
+    'roboodyssey/contracts/snapshots.py': '计划/实际来源隔离、状态版本、快照分支与缓存失效。',
+    'roboodyssey/data/api.py': '当前格式场景、独立 sequence、集合与绑定的公共读取入口。',
+    'roboodyssey/runtime/capture.py': '可选原始 RGB/depth、实际状态、位姿与帧引用归档。',
+    'roboodyssey/runtime/policy.py': '私有策略适配与公共 sequence 执行、真实环境工厂及来源记录。',
+    'roboodyssey/scenes/lighting.py': '准备与执行共用的显式基准照明配置，记录参数并拒绝静默失败。',
+    'roboodyssey/scenes/camera.py': '延迟加载 Isaac 的共用场景打开与持久相机采集。',
+    'roboodyssey/validation/check.py': '源码 CPU 回归与独立 wheel 冒烟检查，禁止仿真/模型导入。',
+    'docs/PUBLIC_API.md': '三库当前公共 API、来源/状态/参考边界及独立 wheel 用法。',
+    'tests/test_public_data.py': '独立场景、分离 sequence 与身份/版本/哈希绑定回归。',
+    'tests/test_policy_runtime.py': '实际执行、私有输入、原始采集引用及状态分支隔离回归。',
+    'tests/test_planned_projection.py': '预计语义修补、历史边界、来源拒混与失败原子性回归。',
+    'roboodyssey/reference_oracles/types.py': '实验参考的轻量状态来源和结果类型，不导入 restools。',
+    'roboodyssey/reference_oracles/navigation.py': '独立版本 restools 点到点参考、快照和搜索预算。',
+    'roboodyssey/reference_oracles/reference.py': '实验性有限候选任务参考，区别预算耗尽与不可达。',
+    'roboodyssey/reference_oracles/answers.py': '基于显式场景与历史来源的共享房间答案计算。',
+    'roboodyssey/reference_oracles/ORIGIN.md': '从 DataSynth 迁入的实验参考代码来源与依赖边界。',
+    'tests/test_reference_oracles.py': '可选 restools 参考算法迁入回归，缺 extra 时明确跳过。',
+    'roboodyssey/reporting/compare.py': '严格按数据与评测条件配对比较，保留失败、缺失与独立重复样本。',
+    'tests/test_comparison.py': '比较条件拒混、缺失/失败、重复 attempt 与配对汇总回归。',
+    'roboodyssey/launch/batch.py': '通用串行实验清单、独立attempt、有限基础设施重试与取消清理。',
+    'tests/test_batch.py': '真实CPU子进程故障注入，验证重试保留、失败不筛选、超时和取消终态。',
+    'docs/BATCH.md': '通用批次配置、新尝试重试/停止及严格配对比较用法。',
+    'tests/test_scene_camera.py': '共享相机矩形视野比例与资源关闭回归。',
 }
 SKIP_DIRS = {'.git', '.venv', '.cache', '.pytest_cache', '__pycache__', 'results',
              'outputs', 'dataset', 'dataset_downloads', 'node_modules', 'build', 'dist'}
@@ -139,6 +176,8 @@ def describe(root, name):
         if path.name == '__init__.py':
             return 'Python 包入口。' + ((' ' + doc) if doc else ''), definitions
     purpose = PURPOSES.get(name)
+    if purpose is None and name.startswith('roboodyssey/scenes/robot_assets/'):
+        purpose = '独立 wheel 内的固定 Stretch3 profile、USD 依赖、来源记录或上游许可；用于默认本体与资产完整性校验。'
     if purpose is None:
         raise ValueError('请补充文件用途 PURPOSES: ' + name)
     return purpose, definitions

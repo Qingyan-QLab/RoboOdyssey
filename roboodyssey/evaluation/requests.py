@@ -10,6 +10,8 @@ from roboodyssey.contracts.state import geometry
 
 
 
+SUCCESS_RULE_VERSION = 'contextual_v3_correctness_only_v1'
+
 def evaluate_request(truth, state, poses, actions, observations, answer):
     results=[]
     previous_visit=-1

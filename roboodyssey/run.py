@@ -90,13 +90,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--agent-cmd",
-        default=f"python3 {ROOT / 'examples' / 'random_agent.py'}",
+        default="python3 -m roboodyssey.agents.random_agent",
         help="command implementing the JSONL agent protocol",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "results",
+        default=Path.cwd() / "results",
         help="base directory; each run is written to a timestamped child",
     )
     parser.add_argument(
@@ -154,6 +154,14 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="front camera horizontal FOV; defaults to 100, or the HoloAgent interface FOV when sensors are enabled",
     )
+    from .scenes.robot_body import ROBOT_NAMES, resolve_robot
+    embodiment = parser.add_mutually_exclusive_group()
+    embodiment.add_argument("--robot", choices=ROBOT_NAMES,
+                            help="body selection; defaults to the bundled Stretch3 profile")
+    embodiment.add_argument("--robot-profile", type=Path,
+                        help="local JSON profile for a USD body using high-level avatar controls")
+    parser.add_argument("--robot-assets", type=Path,
+                        help="robot asset directory containing profiles/ and usd/; alternatively BENCHMARK_ROBOT_ASSETS")
     parser.add_argument(
         "--holoagent-sensors",
         action="store_true",
@@ -185,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
         help="enforce the frozen, full-dataset evaluation profile",
     )
     args = parser.parse_args(argv)
+    try:
+        robot_selection = resolve_robot(args.robot, profile=args.robot_profile, assets=args.robot_assets)
+    except (ValueError, OSError, TypeError) as exc:
+        parser.error(str(exc))
+    robot_body = robot_selection.body
     if args.agent_timeout <= 0:
         parser.error("--agent-timeout must be positive")
     if args.max_steps < 1:
@@ -207,6 +220,11 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
     if args.official:
+        from .scenes.robot_body import validate_official_robot
+        try:
+            validate_official_robot(robot_selection)
+        except ValueError as exc:
+            parser.error(str(exc))
         if args.record_video:
             parser.error(
                 "--record-video is a diagnostic profile; omit --official for review runs"
@@ -237,17 +255,20 @@ def main(argv: list[str] | None = None) -> int:
     dataset = BenchmarkDataset(
         args.dataset, sequence_id=args.sequence[0] if args.sequence else None
     )
+    from .scenes.robot_body import validate_scene_robot
     if args.official:
         from .validation.dataset import main as validate_main
 
         validation_code = validate_main([str(dataset.root)])
         if validation_code:
             return validation_code
+    validate_scene_robot(dataset, robot_selection.identity(), require_declared=args.official)
     scenes = args.scene or dataset.scene_ids()
     unknown = sorted(set(scenes) - set(dataset.scene_ids()))
     if unknown:
         raise ValueError(f"unknown scenes: {unknown}")
     _inspect(dataset, scenes)
+    print("Robot: " + json.dumps(robot_selection.identity(), ensure_ascii=False))
     if args.dry_run:
         return 0
     if args.run_directory:
@@ -335,13 +356,25 @@ def main(argv: list[str] | None = None) -> int:
             else 100.0
         )
         camera_config = EnvConfig(
-            horizontal_fov_degrees=horizontal_fov, resolution=sensor_resolution
+            horizontal_fov_degrees=horizontal_fov, resolution=sensor_resolution, robot_body=robot_body
         )
         width, height = camera_config.resolution
         focal_pixels = width / (
             2.0 * math.tan(math.radians(camera_config.horizontal_fov_degrees) / 2.0)
         )
+        from .scenes.isaac_env import AVATAR_INTERACTION
+        from .evaluation.requests import SUCCESS_RULE_VERSION
+        from .evaluation.navigation import NAVIGATION_REFERENCE_VERSION
+        from .evaluation.transfer import TRANSFER_POLICY
+        from .scenes.robot_body import OFFICIAL_EMBODIMENT_VERSION
         official_profile = {
+            "embodiment_version": OFFICIAL_EMBODIMENT_VERSION if args.official else "experimental",
+            'success_rule_version': SUCCESS_RULE_VERSION,
+            'runtime_contract': dataset.manifest['runtime_contract'],
+            'reference_models': {'navigation': NAVIGATION_REFERENCE_VERSION,
+                                 'transfer': TRANSFER_POLICY['reference_version']},
+            'interaction_model': AVATAR_INTERACTION,
+            'lighting': camera_config.lighting.as_dict(),
             "dataset_manifest_sha256": _digest(dataset.root / "dataset_manifest.json"),
             "dataset_tree_sha256": _dataset_digest(dataset.root),
             "scene_ids": scenes,
@@ -353,6 +386,9 @@ def main(argv: list[str] | None = None) -> int:
             "horizontal_fov_degrees": camera_config.horizontal_fov_degrees,
             "protocol_version": PROTOCOL_VERSION,
             "sequence_identity": dataset.sequence_identity(),
+            "robot_body": robot_selection.identity(),
+            "robot_radius_m": camera_config.robot_radius,
+            "camera_height_m": camera_config.camera_height,
         }
         official_profile_sha256 = hashlib.sha256(
             json.dumps(official_profile, sort_keys=True, separators=(",", ":")).encode(
@@ -389,10 +425,13 @@ def main(argv: list[str] | None = None) -> int:
             "run_directory": str(output_root),
             "agent_name": _agent_name(args.agent_cmd),
             "official": bool(args.official),
+            "robot_body": official_profile["robot_body"],
+            "robot_profile_path": str(robot_selection.profile_path) if robot_selection.profile_path else None,
             "evaluation_profile": official_profile,
             "metric_policy": official_profile["metric_policy"],
             "evaluation_profile_sha256": official_profile_sha256,
             "camera": {
+                "height_m": camera_config.camera_height,
                 "resolution": list(camera_config.resolution),
                 "horizontal_fov_degrees": camera_config.horizontal_fov_degrees,
                 "focal_length_mm": camera_config.focal_length_mm,
@@ -403,7 +442,9 @@ def main(argv: list[str] | None = None) -> int:
                     "cy": (height - 1) / 2.0,
                 },
             },
+            "lighting": official_profile["lighting"],
             "motion": {
+                "interaction_model": AVATAR_INTERACTION,
                 "robot_radius_m": camera_config.robot_radius,
                 "default_move_step_m": camera_config.move_step,
                 "default_turn_step_degrees": camera_config.turn_step_degrees,

@@ -15,6 +15,20 @@ SPATIAL = re.compile(r'\b(in|on|at|near|beside|behind|between|under|above|below|
 ATTRIBUTE_KEYS = ('color', 'material', 'shape', 'pattern')
 
 
+def apply_object_deltas(objects, deltas):
+    """Replay captured object fields without confusing absent fields with null."""
+    for delta in deltas:
+        obj = objects[delta['object_id']]
+        for key, change in delta['changes'].items():
+            if (obj.get(key) != change['before'] or
+                    ('before_present' in change and (key in obj) != change['before_present'])):
+                raise ValueError('object delta has conflicting before state')
+            if change.get('after_present', True):
+                obj[key] = deepcopy(change['after'])
+            else:
+                obj.pop(key, None)
+
+
 def label(category):
     return re.sub(r'([a-z])([A-Z])', r'\1 \2', str(category)).replace('_', ' ').lower()
 

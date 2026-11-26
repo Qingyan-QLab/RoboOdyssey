@@ -105,6 +105,7 @@ class SessionRunner:
         log_callback=None,
         video_options: dict | None = None,
         observation_clock: ObservationClock | None = None,
+        observation_archive=None,
     ):
         self.output_root = Path(output_root)
         self.agent = agent
@@ -116,6 +117,11 @@ class SessionRunner:
         self.wait_callback = wait_callback
         self.observations = observation_clock or ObservationClock()
         self.observations.on_event = self._audit_observation
+        self.observation_archive = observation_archive
+        self._capture_context = None
+        self.observations.on_sample = self._capture_observation if observation_archive is not None else None
+        from .policy import InProcessPolicyAgent
+        self.private_policy = isinstance(agent, InProcessPolicyAgent)
         self._observation_task_id = None
         self._observation_context = None
         self._public_observation = lambda value: value
@@ -130,6 +136,15 @@ class SessionRunner:
         self._agent_io = None
         self._current_output: Path | None = None
         self._current_session_id: str | None = None
+
+    def _capture_observation(self, observation, evidence):
+        if self._capture_context is None:
+            raise RuntimeError('raw observation capture requires an actual state source')
+        self.observation_archive.save(observation, **self._capture_context())
+
+    def _set_policy_context(self, **context):
+        if self.private_policy:
+            self.agent.set_context(context)
 
     def _audit_observation(self, event, **values):
         if self._agent_io is not None:
@@ -163,6 +178,7 @@ class SessionRunner:
         self._observation_task_id = None
         self._observation_context = None
         self._stream_evidence = []
+        self._capture_context = None
 
     def _push_observation(self):
         sample = self.observations.poll()
@@ -319,6 +335,7 @@ class SessionRunner:
         if not sessions:
             raise ValueError("a run requires at least one session")
         if manifest(self.output_root) is None:
-            dataset = BenchmarkDataset(sessions[0].private_paths["dataset_root"])
+            dataset = BenchmarkDataset(sessions[0].private_paths["dataset_root"],
+                                       scene=sessions[0].private_paths.get("scene_version_root"))
             initialize_run(self.output_root, dataset)
         return run_requests(self, scene_id, sessions, canonical_state, env_factory)

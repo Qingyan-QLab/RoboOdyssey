@@ -16,8 +16,11 @@ def make_env_factory(
 ):
     import numpy as np
     from .isaac_env import EnvConfig, IsaacVLNEnv
+    from .robot_body import robot_identity_for_config, validate_scene_robot
 
     holder = {} if overview_holder is None else overview_holder
+    camera_config = camera_config or EnvConfig(camera_prim_path="/World/LongTermBenchmark/Camera")
+    validate_scene_robot(dataset, robot_identity_for_config(camera_config))
 
     def factory(scene_id: str, initial_state: dict, session_id: str):
         with np.load(dataset.navigation_path(scene_id), allow_pickle=False) as archive:
@@ -39,15 +42,11 @@ def make_env_factory(
             start_pose = deepcopy(initial_state["robot_base_pose"])
             start_pose["position"][2] += env.config.camera_height
             env.set_agent_pose(start_pose)
-            try:
-                from pxr import Gf, UsdGeom, UsdLux
-                dome = UsdLux.DomeLight.Define(env.stage, "/World/BenchmarkRuntime/DomeLight")
-                dome.CreateIntensityAttr(3000.0)
-                fill = UsdLux.DistantLight.Define(env.stage, "/World/BenchmarkRuntime/FillLight")
-                fill.CreateIntensityAttr(800.0)
-                UsdGeom.XformCommonAPI(fill).SetRotate(Gf.Vec3f(25.0, -20.0, -35.0))
-            except Exception as exc:
-                print(f"warning: runtime lighting unavailable: {exc}")
+            if env.config.robot_body is not None and not env._walkable(env._agent_position):
+                raise ValueError("frozen robot start pose is blocked for the selected robot radius; "
+                                 "choose compatible data or a different body profile")
+            from .lighting import apply_scene_lighting
+            env.lighting_state = apply_scene_lighting(env.stage, env.config.lighting)
             if viewer:
                 from omni.kit.viewport.utility import get_active_viewport, get_viewport_from_window_name
                 # Do not use only the focused viewport: creating/focusing the

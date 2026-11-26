@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from ..artifacts.layout import sha256_file, safe_id
+from ..contracts.state import apply_object_deltas
 
 from .task_metrics import prepare_reference
 
@@ -15,9 +16,7 @@ def final_state(before, actions):
     after = deepcopy(before)
     for action in actions:
         after['robot_pose'] = deepcopy(action['after'])
-        for delta in action.get('state_changes', {}).get('objects', []):
-            for key, change in delta['changes'].items():
-                after['objects'][delta['object_id']][key] = deepcopy(change['after'])
+        apply_object_deltas(after.get('objects', {}), action.get('state_changes', {}).get('objects', []))
         held = action.get('state_changes', {}).get('held_object')
         if held:
             after['held_object'] = held['after']
@@ -92,7 +91,7 @@ class ReconstructedReference:
         from ..scenes.isaac_env import IsaacVLNEnv, EnvConfig
         env = IsaacVLNEnv.__new__(IsaacVLNEnv)  # No constructor, SDK, stage or GPU.
         env._np = np
-        env.config = EnvConfig(robot_radius=float(self.radius))
+        env.config = EnvConfig(robot_body=None, robot_radius=float(self.radius))
         env._environment_setup, env._metadata = self.setup, self.metadata
         env._objects = deepcopy(before['objects'])
         env._held_object = before.get('held_object')
@@ -101,7 +100,9 @@ class ReconstructedReference:
         env._origin = self.navigation['origin_xy']
         env._door_open = {door['object_id'] for door in self.setup['doors']}
         env._door_cells = {}  # all-open-doors geometry is baked into the map
-        env._refresh_vlm_navigation()
+        # CPU reconstruction uses captured evidence; it must never fabricate
+        # a live USD readback or initialize a simulator.
+        env._refresh_vlm_navigation(measured_state=before)
         return env
 
     def prepare(self, scene_id, session_id, truth, before):

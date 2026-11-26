@@ -47,12 +47,15 @@ class RequestEvents:
 
 def state_changes(before, after):
     """Capture actual object and robot differences, regardless of task success."""
-    fields = ('room_id', 'held', 'support_object_id', 'geometry', 'door_open', 'pose', 'interaction_position')
     changes = []
     for oid in sorted(set(before.get('objects', {})) | set(after.get('objects', {}))):
         old, new = before.get('objects', {}).get(oid, {}), after.get('objects', {}).get(oid, {})
-        delta = {k: {'before': deepcopy(old.get(k)), 'after': deepcopy(new.get(k))}
-                 for k in fields if old.get(k) != new.get(k)}
+        delta = {}
+        for key in sorted(set(old) | set(new)):
+            if old.get(key) != new.get(key) or (key in old) != (key in new):
+                delta[key] = {'before': deepcopy(old.get(key)), 'after': deepcopy(new.get(key))}
+                if (key in old) != (key in new):
+                    delta[key].update(before_present=key in old, after_present=key in new)
         if delta:
             changes.append({'object_id': oid, 'changes': delta})
     return {'objects': changes, 'robot': {'before': before.get('robot_pose'), 'after': after.get('robot_pose')},

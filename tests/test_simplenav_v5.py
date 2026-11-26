@@ -351,8 +351,9 @@ class IsaacBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             navigation = Path(tmp) / 'navigation.npz'
             np.savez(navigation, grid=np.zeros((2, 2)))
-            dataset = Mock()
-            dataset.navigation_path.return_value = navigation
+            dataset = SimpleNamespace(manifest={}, navigation_path=lambda _: navigation,
+                                      scene_asset=lambda _: 'scene.usdz', scene_metadata=lambda _: {},
+                                      manipulation=lambda _: {})
             app = Mock()
             with patch('roboodyssey.scenes.isaac_env.IsaacVLNEnv') as scene:
                 env = scene.return_value
@@ -364,6 +365,39 @@ class IsaacBackendTests(unittest.TestCase):
 
                 env.close.assert_called_once_with()
                 app.update.assert_not_called()
+
+    def test_blocked_stretch_start_closes_environment_without_moving_frozen_pose(self):
+        from roboodyssey.scenes.isaac_backend import make_env_factory
+        from roboodyssey.scenes.isaac_env import EnvConfig
+
+        with tempfile.TemporaryDirectory() as tmp:
+            navigation = Path(tmp) / 'navigation.npz'
+            np.savez(navigation, grid=np.zeros((2, 2)))
+            dataset = SimpleNamespace(manifest={}, navigation_path=lambda _: navigation,
+                                      scene_asset=lambda _: 'scene.usdz', scene_metadata=lambda _: {},
+                                      manipulation=lambda _: {})
+            state = {'robot_base_pose': {'position': [1., 2., 0.], 'orientation': [0, 0, 0, 1]}}
+            with patch('roboodyssey.scenes.isaac_env.IsaacVLNEnv') as scene:
+                env = scene.return_value
+                env.config = EnvConfig()
+                env._walkable.return_value = False
+                factory = make_env_factory(dataset, Mock())
+                with self.assertRaisesRegex(ValueError, 'frozen robot start pose is blocked'):
+                    factory('scene', state, 'session')
+                env.close.assert_called_once_with()
+                self.assertEqual(state['robot_base_pose']['position'], [1., 2., 0.])
+                self.assertEqual(env.set_agent_pose.call_args.args[0]['position'], [1., 2., 1.5])
+
+    def test_scene_body_mismatch_is_rejected_before_environment_creation(self):
+        from roboodyssey.scenes.isaac_backend import make_env_factory
+        from roboodyssey.scenes.isaac_env import EnvConfig
+        from roboodyssey.scenes.robot_body import default_robot_identity
+
+        dataset = SimpleNamespace(manifest={'robot_profile': default_robot_identity()})
+        with patch('roboodyssey.scenes.isaac_env.IsaacVLNEnv') as scene:
+            with self.assertRaisesRegex(ValueError, 'does not match runtime'):
+                make_env_factory(dataset, Mock(), camera_config=EnvConfig(robot_body=None))
+            scene.assert_not_called()
 
 
 class PreflightTests(unittest.TestCase):

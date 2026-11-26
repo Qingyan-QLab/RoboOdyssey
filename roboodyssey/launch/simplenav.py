@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REQUIRED = {'dataset', 'simplenav_root', 'checkpoint', 'agent_python', 'isaac_python', 'output'}
 OPTIONAL = {'url','unnorm_key','max_steps','agent_timeout','history_frames','collision_reset_threshold',
             'video_fps','video_event_seconds','video_layout','ffmpeg','viewer','record_video','gpu',
-            'sequences','all_sequences','model_service','environment','auto_analyze'}
+            'sequences','all_sequences','model_service','environment','auto_analyze',
+            'robot_profile','robot','robot_assets'}
 
 
 def load_config(path):
@@ -25,6 +26,16 @@ def load_config(path):
     for key in REQUIRED:
         value = Path(config[key]).expanduser()
         config[key] = str((path.parent/value).resolve() if not value.is_absolute() else value.resolve())
+    from ..scenes.robot_body import DEFAULT_ROBOT, validate_robot_selection
+    validate_robot_selection(config.get('robot'), config.get('robot_profile'), config.get('robot_assets'))
+    for key in ('robot_profile','robot_assets'):
+        if key in config:
+            if not isinstance(config[key],str) or not config[key].strip():
+                raise ValueError(key+' must be a nonempty path')
+            value = Path(config[key]).expanduser()
+            config[key] = str((path.parent/value).resolve())
+    if 'robot_profile' not in config:
+        config.setdefault('robot', DEFAULT_ROBOT)
     for key, default in [('max_steps',2000),('history_frames',8),('collision_reset_threshold',5),('video_fps',10)]:
         config.setdefault(key,default)
         if type(config[key]) is not int or config[key] < (0 if key=='collision_reset_threshold' else 1):
@@ -78,7 +89,7 @@ def load_config(path):
 
 
 def commands(config):
-    agent = [config['agent_python'],str(ROOT/'examples/simplenav_agent.py'),
+    agent = [config['agent_python'],'-m','roboodyssey.agents.simplenav_cli',
              '--simplenav-root',config['simplenav_root'],'--checkpoint',config['checkpoint'],
              '--url',config['url'],'--history-frames',str(config['history_frames']),
              '--collision-reset-threshold',str(config['collision_reset_threshold'])]
@@ -87,6 +98,9 @@ def commands(config):
            '--agent-cmd',shlex.join(agent),'--output',config['output'],'--max-steps',str(config['max_steps']),
            '--agent-timeout',str(config['agent_timeout'])]
     if config['viewer']: run += ['--viewer']
+    if config.get('robot_profile'): run += ['--robot-profile',config['robot_profile']]
+    if config.get('robot'): run += ['--robot',config['robot']]
+    if config.get('robot_assets'): run += ['--robot-assets',config['robot_assets']]
     if 'gpu' in config: run += ['--gpu',str(config['gpu'])]
     if config['record_video']:
         run += ['--record-video','--video-layout',config['video_layout'],'--video-fps',str(config['video_fps']),
@@ -110,6 +124,9 @@ def preflight(config):
         return str(path)
     for key in ('agent_python','isaac_python'):
         check(key,lambda key=key:executable(key))
+    from ..scenes.robot_body import resolve_robot
+    check('robot_assets',lambda:resolve_robot(config.get('robot'), profile=config.get('robot_profile'),
+                                             assets=config.get('robot_assets')).identity())
     def source():
         root = Path(config['simplenav_root'])
         for name in ('deployment/model_server/tools/websocket_policy_client.py','NavVLAeval/common/data/runtime_dataset.py',

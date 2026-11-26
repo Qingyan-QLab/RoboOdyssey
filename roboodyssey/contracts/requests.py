@@ -53,6 +53,8 @@ def prepare_mutation(initial, mutation, state, history):
         nav=derive_navigation(initial.engine.rooms,entities,resolution=initial.engine.navigation['resolution'],
             robot_radius=initial.engine.navigation['robot_radius'],environment_setup=initial.engine.navigation.get('environment_setup'))
         nav['scene_id']=initial.metadata['scene']['scene_id']
+        if initial.engine.navigation.get('robot_profile') is not None:
+            nav['robot_profile'] = deepcopy(initial.engine.navigation['robot_profile'])
         pose=state.get('robot_pose',{}).get('position')
         if not pose:raise ValueError('actual robot pose required for a safe mutation approach')
         start=tuple(int((pose[i]-nav['origin_xy'][i])/nav['resolution']) for i in (0,1))
