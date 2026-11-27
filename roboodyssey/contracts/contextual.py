@@ -55,7 +55,7 @@ def normalize_state(cache, state):
 def distance_to_box(pose, box):
     return sum(max(box['min'][i]-pose[i], 0, pose[i]-box['max'][i])**2 for i in (0,1))**.5
 
-def completed(goals, state):
+def completed(goals, state, *, navigation=None):
     if len(goals) != 1: return None  # Ordered visits require post-dispatch order evidence.
     goal = goals[0]
     kind, oid = goal['goal_kind'], goal['target']['object_ids'][0]
@@ -69,9 +69,14 @@ def completed(goals, state):
         pose = state.get('robot_pose', {}).get('position')
         if pose is None: raise RuntimeContractError('robot pose required for navigation completion')
         box = (goal['fixed_target_geometry'] if kind == 'revisit_place' else geometry(state['objects'][oid]))['world_aabb']
-        distance = distance_to_box(pose, box)
-        if distance <= goal['success_criteria'].get('position_tolerance_m', .8):
-            return {'goal_id':goal['goal_id'], 'distance_m':distance}
+        if navigation is None:
+            return None  # No obstacle evidence means no proved exclusion.
+        from ..evaluation.navigation import GoalRegion
+        prepared = deepcopy(goal)
+        prepared['expected_outcome'] = {'target_geometry': {'world_aabb_xy': box}}
+        if GoalRegion(navigation, prepared).reached(pose):
+            return {'goal_id':goal['goal_id'], 'distance_m':distance_to_box(pose, box),
+                    'arrival_rule':'obstacle_aware', 'obstacle_evidence_verified':True}
     return None
 
 def bound_record(binding, oid, history):
@@ -163,7 +168,7 @@ def prepare_mutation_v3(initial, mutation, cache, state, history):
         raise RuntimeContractError('mutation source dispatch decision missing')
     return prepare_mutation(initial, mutation, state, history)
 
-def instantiate_request_v3(public, truth, template, cache, state, history, introduced=None, *, state_source='actual'):
+def instantiate_request_v3(public, truth, template, cache, state, history, introduced=None, *, state_source='actual', navigation=None):
     """Resolve shared semantics from explicitly actual or planned experiences.
 
     Planned consumers use assumed_* fields; they cannot supply execution facts.
@@ -323,7 +328,7 @@ def instantiate_request_v3(public, truth, template, cache, state, history, intro
                 goal.pop(stale,None)
         text=render_request(frozen,slots,intros)
         record['steps'].append('render_frozen_semantics_and_refresh_gt')
-        completion=completed(runtime['goals'],state)
+        completion=completed(runtime['goals'],state,navigation=navigation)
         if completion is not None:
             record.update(scored=False,reason_code='already_satisfied',completion_evidence=completion)
             return {'status':'already_satisfied','public_task':None,'runtime_ground_truth':runtime,'repair_record':record,'name_ledger':introduced}

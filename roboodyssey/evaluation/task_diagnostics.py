@@ -10,8 +10,12 @@ import json
 import math
 from pathlib import Path
 from ..artifacts.layout import iter_sessions, session_file, sha256_file, read_json_lines as read_lines
-from .navigation import box_distance
-from .task_metrics import METRIC_VERSION, SUPPORTED_METRIC_VERSIONS, evaluate_metrics, load_reference
+from .navigation import box_distance, OrderedRoute
+from .requests import SUCCESS_RULE_VERSION
+from .task_metrics import (
+    METRIC_VERSION, SUPPORTED_METRIC_VERSIONS, evaluate_metrics, load_reference,
+    navigation_reference_changed,
+)
 from .rescore import final_state, historical_measurements, metric_breakdown, ReconstructedReference
 
 
@@ -84,7 +88,7 @@ def progress_fraction(distance, tolerance, baseline):
     return min(1.0, max(0.0, 1.0 - remaining / baseline))
 
 
-def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5):
+def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5, navigation=None):
     goals = truth['goals']
     if not goals or any(g['goal_kind'] not in NAVIGATION for g in goals):
         return None
@@ -96,6 +100,11 @@ def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5):
     if any(change['object_id'] in target_ids for a in actions
            for change in a.get('state_changes', {}).get('objects', [])):
         raise ValueError('target moved during task; static-target distance series is not applicable')
+    if navigation is None:
+        raise ValueError('navigation arrival reference missing; proximity cannot establish arrival')
+    if navigation_reference_changed(navigation, actions):
+        raise ValueError('navigation world changed since the saved arrival reference')
+    route = OrderedRoute(navigation, goals)
     start = xy(state.get('robot_pose') or state['agent_pose'])
     # Match the scorer's before/after sample indices, including repeated poses
     # between actions. Never interpolate through a teleport or credit a later
@@ -109,12 +118,13 @@ def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5):
     boxes = [target_box(g) for g in goals]
     tolerances = [g['success_criteria'].get('position_tolerance_m', .8) for g in goals]
     distances = [[box_distance(p, b) for p in poses] for b in boxes]
+    remaining = [[route.distance(p, index) for p in poses] for index in range(len(goals))]
     activations, reached = [0], []
     stage = 0
     timeline, completed = [], []
     for sample in range(len(poses)):
         was_reached = False
-        if stage < len(goals) and distances[stage][sample] <= tolerances[stage]:
+        if stage < len(goals) and route.reached(poses[sample], stage):
             reached.append(sample)
             stage += 1
             was_reached = True
@@ -126,8 +136,11 @@ def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5):
             # The newly activated goal cannot receive credit at the same sample.
             score = 100.0 * stage / len(goals)
         else:
-            baseline = max(0.0, distances[stage][activations[stage]] - tolerances[stage])
-            score = 100.0 * (stage + progress_fraction(distances[stage][sample], tolerances[stage], baseline)) / len(goals)
+            baseline = remaining[stage][activations[stage]]
+            current = remaining[stage][sample]
+            fraction = (progress_fraction(current, 0, baseline)
+                        if math.isfinite(current) and math.isfinite(baseline) else 0.0)
+            score = 100.0 * (stage + fraction) / len(goals)
         timeline.append(score)
         completed.append(stage)
     goal_rows = []
@@ -146,13 +159,17 @@ def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5):
             'active_closest_distance_m': min(segment) if segment else None,
             'activation_pose_index': active, 'reached_pose_index': hit,
             'ordered_success': hit is not None,
-            'distance_series_m': distances[index]})
+            'distance_series_m': distances[index],
+            'remaining_path_series_m': [d if math.isfinite(d) else None for d in remaining[index]]})
     logged = outcome.get('goal_results', [])
     if len(logged) != len(goals) or any(
             row['goal_id'] != evidence['goal_id'] or row['ordered_success'] != evidence['success']
             or row['reached_pose_index'] != evidence.get('pose_index')
             for row, evidence in zip(goal_rows, logged)):
         raise ValueError('reconstructed navigation visits disagree with recorded goal evidence')
+    expected_success = stage == len(goals) and outcome.get('agent_status') != 'unsupported'
+    if outcome.get('success') is not expected_success:
+        raise ValueError('reconstructed navigation success disagrees with recorded task outcome')
     final_goal = min(stage, len(goals) - 1)
     last = goal_rows[final_goal]
     tags = []
@@ -165,6 +182,8 @@ def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5):
                 tags.append('始终未进入近达标带')
             else:
                 tags.append('接近但未达标')
+                if closest <= last['tolerance_m']:
+                    tags.append('直线距离达标但未进入合法接近区域')
                 if last['final_distance_m'] - closest > near_margin_m:
                     tags.append('接近后离开')
     if (motion['collision_count'] or 0) >= 2:
@@ -178,7 +197,9 @@ def navigation_diagnostics(truth, state, actions, outcome, *, near_margin_m=.5):
     efficiency = (lower_bound / max(lower_bound, motion['walking_length_m'], EPS)
                   if outcome.get('success') is True and lower_bound is not None and lower_bound > EPS and not motion['reset_count'] else None)
     resets = reset_diagnostics(actions, goal_rows, completed)
-    return {'distance_type': 'aabb_2d', 'goals_completed_in_order': stage, 'goals_total': len(goals),
+    return {'distance_type': 'aabb_2d_diagnostic_only',
+            'arrival_rule': SUCCESS_RULE_VERSION, 'progress_distance_type': 'grid_geodesic_8',
+            'goals_completed_in_order': stage, 'goals_total': len(goals),
             'final_progress_score': timeline[-1], 'best_progress_score': max(timeline),
             'active_goal_at_end': last['goal_id'], 'goals': goal_rows, 'motion': motion,
             'straight_line_leg_lower_bound_m': lower_bound, 'walking_efficiency': efficiency,
@@ -282,8 +303,10 @@ def conditions(truth, names):
         name = names.get('objects', {}).get(oid, {}).get('en', oid)
         kind = goal['goal_kind']
         if kind in NAVIGATION:
-            destination = '实际建立的地点范围' if kind == 'revisit_place' else '运行时目标包围盒'
-            text = f'{name}：距{destination} ≤ {goal["success_criteria"].get("position_tolerance_m", .8):g} m'
+            tolerance = goal['success_criteria'].get('position_tolerance_m', .8)
+            destination = ('到实际建立地点的可行路径距离' if kind == 'revisit_place'
+                           else '目标的无阻挡合法接近区域；距目标包围盒')
+            text = f'{name}：{destination} ≤ {tolerance:g} m；须满足机器人碰撞与障碍约束'
             if kind == 'establish_place':
                 text += '，以实际到达位置建立地点'
         elif kind == 'transfer':
@@ -331,6 +354,34 @@ def _index(records, label):
             raise ValueError(f'duplicate {label}: {key}')
         result[key] = (number, item)
     return result
+
+
+def recorded_success_rule(task, outcome, config):
+    """An explicit current metric also identifies its matching arrival contract."""
+    profile = config.get('evaluation_profile') or {}
+    versions = {item['success_rule_version'] for item in (task, outcome, config, profile)
+                if item.get('success_rule_version')}
+    if len(versions) > 1:
+        raise ValueError('recorded success rule versions disagree')
+    if versions:
+        return versions.pop()
+    if outcome.get('evaluation', {}).get('version') == METRIC_VERSION:
+        return SUCCESS_RULE_VERSION
+    return None
+
+
+def require_current_arrival_rule(version):
+    if version != SUCCESS_RULE_VERSION:
+        raise ValueError('historical navigation success rule is incompatible with obstacle-aware arrival; '
+                         'a new run is required because prior skips and early stops cannot be replayed')
+
+
+def recorded_task_score(outcome):
+    """Preserve a well-formed historical number without accepting its rule."""
+    metric = outcome.get('evaluation') or {}
+    value = metric.get('score')
+    return (value if metric.get('score_max') == 100 and type(value) in (int, float)
+            and math.isfinite(value) and 0 <= value <= 100 else None)
 
 
 def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None, reference_output=None):
@@ -399,7 +450,9 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
             task_actions = actions[tid]
             identity = {'scene_id': scene_id, 'session_id': sid, 'task_id': tid}
             score = None
+            success_rule = None
             try:
+                success_rule = recorded_success_rule(task, outcome, config)
                 score = task_score(outcome)
                 if metrics_tasks.get(tid) != (outcome.get('success'), outcome.get('scored'), outcome.get('reason_code')):
                     raise ValueError('outcome disagrees with session metrics')
@@ -421,8 +474,12 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
                 'target_names': [names.get('objects', {}).get(g['target']['object_ids'][0], {}).get('en', g['target']['object_ids'][0])
                                  for g in (truth or task['original_ground_truth'])['goals']],
                 'formal_task_score': None if rescore else score, 'excluded': outcome.get('scored') is False,
-                'original_task_score': score,
+                'original_task_score': recorded_task_score(outcome),
+                'original_success': outcome.get('success'),
+                'original_evaluation': deepcopy(outcome.get('evaluation')),
                 'original_metric_version':outcome.get('evaluation',{}).get('version',None),
+                'success_rule_version': success_rule,
+                'requested_success_rule_version': SUCCESS_RULE_VERSION if rescore else success_rule,
                 'success': outcome.get('success'), 'reason_code': outcome.get('reason_code'),
                 'agent_status': outcome.get('agent_status'), 'steps': outcome.get('steps', 0),
                 'metric_version':METRIC_VERSION if rescore else outcome.get('evaluation',{}).get('version',None),
@@ -436,11 +493,33 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
                 'video': {'file': str(session_file(path, 'review.mp4')), 'seconds': videos.get(task.get('decision_event_id'), 0)} if (session_file(path, 'review.mp4')).is_file() else None}
             if rescore and row['excluded']:
                 row['evaluation']=evaluate_metrics(None,task['state_before'],task['state_before'],[],[],outcome)
+            if (row['excluded'] and outcome.get('reason_code') == 'already_satisfied'
+                    and truth and any(g['goal_kind'] in NAVIGATION for g in truth['goals'])):
+                try:
+                    require_current_arrival_rule(success_rule)
+                    if task_actions or outcome.get('steps', 0):
+                        raise ValueError('excluded navigation task contains execution actions')
+                    reference = task.get('metric_reference', {'status': 'unavailable'})
+                    grid = load_reference(reference, path)
+                    if grid is None:
+                        raise ValueError('excluded navigation task lacks saved arrival evidence')
+                    sources.add(path/reference['file'])
+                    if (len(truth['goals']) != 1
+                            or truth['goals'][0]['goal_kind'] not in {'visit', 'revisit_place'}
+                            or not OrderedRoute(grid, truth['goals']).reached(
+                                task['state_before']['robot_pose']['position'], 0)):
+                        raise ValueError('already_satisfied navigation exclusion fails obstacle-aware arrival')
+                except (KeyError, ValueError, OSError) as exc:
+                    issues.append({**identity, 'scope': 'task_score', 'error': str(exc)})
             if truth and not row['excluded']:
                 try:
+                    has_navigation = any(g['goal_kind'] in NAVIGATION for g in truth['goals'])
+                    if has_navigation:
+                        require_current_arrival_rule(success_rule)
                     if len(task_actions) != outcome['steps'] or [a['task_step'] for a in task_actions] != list(range(outcome['steps'])):
                         raise ValueError('action log is incomplete or out of order')
-                    if rescore or outcome.get('evaluation'):
+                    grid = None
+                    if rescore or outcome.get('evaluation') or has_navigation:
                         reference=task.get('metric_reference',{'status':'unavailable','reason':'reference_not_recorded'})
                         grid=load_reference(reference,path)
                         if reference.get('status')=='ready':
@@ -453,8 +532,9 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
                         # snapshot and actual state changes, never offline GT.
                         after=final_state(task['state_before'],task_actions)
                         recomputed=evaluate_metrics(truth,task['state_before'],after,poses,task_actions,outcome,
-                            reference=reference,grid=grid,timing=outcome.get('task_timing'),metric_version=row['metric_version'])
-                        if not rescore and recomputed!=outcome['evaluation']:
+                            reference=reference,grid=grid,timing=outcome.get('task_timing'),
+                            metric_version=row['metric_version'] or METRIC_VERSION)
+                        if not rescore and outcome.get('evaluation') and recomputed!=outcome['evaluation']:
                             raise ValueError('recomputed evaluation differs from logged metric')
                         if rescore:
                             if not outcome.get('task_timing'):
@@ -462,8 +542,10 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
                             row['formal_task_score']=recomputed['score']
                             if recomputed['score'] is None:
                                 issues.append({**identity,'scope':'task_score','error':recomputed.get('reason','metric unavailable')})
-                        row['evaluation']=recomputed
-                    nav = navigation_diagnostics(truth, task['state_before'], task_actions, outcome, near_margin_m=near_margin_m)
+                        if rescore or outcome.get('evaluation'):
+                            row['evaluation']=recomputed
+                    nav = navigation_diagnostics(truth, task['state_before'], task_actions, outcome,
+                                                 near_margin_m=near_margin_m, navigation=grid)
                     row['navigation'] = nav
                     if nav:
                         for goal in nav['goals']:
@@ -473,7 +555,7 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
                 except (KeyError, ValueError, OSError) as exc:
                     row['navigation_error'] = str(exc)
                     issues.append({**identity, 'scope': 'navigation', 'error': str(exc)})
-                    if rescore or outcome.get('evaluation'):
+                    if rescore or outcome.get('evaluation') or has_navigation:
                         row['formal_task_score']=None
                         issues.append({**identity,'scope':'task_score','error':str(exc)})
             row['result_explanation'] = explain_result(row)
@@ -496,10 +578,11 @@ def analyze_run(root, *, near_margin_m=.5, rescore=False, reference_dataset=None
         'summary': totals, 'session_checks': session_checks, 'issues': issues,
         'tasks': rows, 'source_files': provenance,
         'method': {
-            'formal': '0-100 progress_path_v3; exclusions N/A; missing evidence remains unscored',
-            'distance': 'Euclidean XY point-to-runtime-AABB distance, same as v3 scorer; not navmesh distance',
-            'remaining': 'r=max(distance-tolerance,0)',
-            'progress': '100*clip(1-r/r_start,0,1); r_start=0: 100 inside allowed range, otherwise 0',
+            'formal': f'0-100 {METRIC_VERSION}; exclusions N/A; missing evidence remains unscored',
+            'arrival': SUCCESS_RULE_VERSION + '; shared collision-checked target regions',
+            'distance': 'Euclidean XY point-to-runtime-AABB distance is diagnostic only; never proves arrival',
+            'remaining': 'grid shortest-path distance to the obstacle-validated arrival region',
+            'progress': '100*clip(1-r/r_start,0,1); ordered arrivals use the shared obstacle-aware predicate',
             'ordered_progress': '100*(completed_prefix+active_goal_progress)/goal_count; leg baseline at previous ordered arrival; inactive goals contribute zero; completed visits remain completed',
             'best_progress': 'maximum of the ordered progress series, not the sum of independent per-target maxima',
             'reset_progress': 'progress includes actual positions after resets; teleport assistance is separately measured, not attributed to normal walking',

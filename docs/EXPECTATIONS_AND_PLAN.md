@@ -22,7 +22,7 @@ Benchmark 接收场景包、冻结 sequence、被测模型与运行配置，执�
 目标代码依赖为 `SessionBuilder → Benchmark`、`DataSynth → Benchmark`，两生成库之间通过产物衔接。
 只有 Benchmark 计划开源，必须在不安装两生成库的环境中安装、校验发布数据并完成评测。
 公共模块先随 Benchmark 包提供；CPU 数据处理与 Isaac 依赖分开加载，不增加第四仓库或服务。
-已统一：发行名 `RoboOdyssey`、导入名 `roboodyssey`、版本 `0.2.1`，消费者依赖 `>=0.2.1,<0.3`；公共 API 见 [PUBLIC_API](PUBLIC_API.md)。
+已统一：发行名 `RoboOdyssey`、导入名 `roboodyssey`、版本 `0.2.2`，消费者依赖 `>=0.2.2,<0.3`；公共 API 见 [PUBLIC_API](PUBLIC_API.md)。
 
 优先级统一为：**P0 最小正确闭环与行为基线；P1 质量、规模和工程化；P2 能力扩展与研究项**。
 处理方式统一为“保留／完善／重设计／新增／迁移”；已有实现不会因出现在规划中自动列为新增。
@@ -44,7 +44,7 @@ Benchmark 接收场景包、冻结 sequence、被测模型与运行配置，执�
 | 模型通信与适配 | 已有 JSONL 子进程协议、连续帧握手、SimpleNav、Responses API／兼容视觉 Agent 和 HoloAgent 示例：`agents/`、`examples/`；SimpleNav 仅导航 | 保留＋统一接入验证和能力声明，BF1 |
 | 观测、事件与诊断录像 | 已有：`runtime/observations.py`、`runtime/recording.py`、`artifacts/`；日志中图像可仅存摘要，录像不等于训练用原始帧归档 | 保留正式采样规则，完善按需原始采集，B3 |
 | 任务成功、排除与分母 | 已有：`evaluation/requests.py`，按实际修补后 GT 判定、记录排除因果 | 保留＋明确在线成功判定接口，BF4／B3 |
-| 导航、搬运、问答评分 | 已有：`evaluation/task_metrics.py`、`evaluation/navigation.py`、`evaluation/transfer.py`；当前指标为 `progress_path_v3` | 保留旧算法基线，版本治理与扩展，BF4／B4 |
+| 导航、搬运、问答评分 | 已有：`evaluation/task_metrics.py`、`evaluation/navigation.py`、`evaluation/transfer.py`；当前指标为 `progress_path_v4` | 保留旧算法基线，版本治理与扩展，BF4／B4 |
 | 实验启动、来源与进度 | 已有：`launch/experiment.py`、`launch/sequences.py`、`launch/provenance.py`；实验配置和托管服务启动针对 SimpleNav，多序列逐个执行 | 完善通用实验配置、计划与尝试记录，BF2 |
 | 超时、停止、异常与清理 | 已有：Agent 超时、STOP／信号停止、失败状态、托管进程清理；无完整物理 checkpoint 续跑 | 保留＋完善失败分类和序列级重试，BF3 |
 | 报告与失败诊断 | 已有：`reporting/`、`evaluation/task_diagnostics.py`，请求修补、路径、碰撞、reset、视频关联与离线分析 | 保留＋完善诊断入口与证据导航，BF6 |
@@ -92,7 +92,7 @@ Benchmark 接收场景包、冻结 sequence、被测模型与运行配置，执�
 | 数据字段 schema | `cl_task_sequence_v1` 的 `schema_version=5` | manifest、公开任务、私有目标等结构与字段；各类场景／结果 manifest 有自己的 schema，不能一概写成 5 |
 | 文件布局 layout | `layout_version=2`：集合下 `scene_versions/<revision>` 被 `sequences/<id>` 共享；layout 1 为每序列自带输入的旧布局 | 文件位置、资产引用、场景绑定和哈希；改目录不自动升级任务语义 |
 | 运行契约 runtime | `contextual_requests` v3 | 请求、名称、历史依赖、任务修补与环境变化的解释规则 |
-| 结果／指标版本 | 例如结果 schema 与 `progress_path_v3` | 原证据是否足够、原评分实现是否可用、比较是否具有相同口径 |
+| 结果／指标版本 | 例如结果 schema 与 `progress_path_v4` | 原证据是否足够、原评分实现是否可用、比较是否具有相同口径 |
 | 训练导出版本 | 例如 Builder 现有 `robot-agent-message-v3` | 由 DataSynth 适配，与冻结 sequence 的 schema／layout 分开管理 |
 
 用户已确定兼容范围：**三个仓库当前输出互通即可**。公共入口只接受 sequence

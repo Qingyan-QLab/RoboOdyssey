@@ -6,17 +6,17 @@ from pathlib import Path
 
 from .navigation import GridDistance, OrderedRoute
 from .metrics.qa import contextual_answer_correct
-from .transfer import TransferReference, TRANSFER_POLICY, transfer_metric
+from .transfer import TransferReference, TRANSFER_POLICY, transfer_metric, collision_digest
 from ..artifacts.layout import local_path, safe_id, sha256_file
 
 
-METRIC_VERSION = 'progress_path_v3'
+METRIC_VERSION = 'progress_path_v4'
 SUPPORTED_METRIC_VERSIONS = {METRIC_VERSION}
 NAVIGATION = {'visit', 'establish_place', 'revisit_place'}
 METRIC_POLICY = {
     'version': METRIC_VERSION, 'range': [0, 100],
     'navigation': 'ordered_geodesic_progress_times_path_efficiency',
-    'navigation_reference': 'actual_task_start_grid_with_avatar_and_carried_door_clearance',
+    'navigation_reference': 'actual_task_start_grid_with_validated_arrival_regions',
     'reset_cost': 'max(grid_geodesic_between_endpoints, displacement, grid_resolution)',
     'transfer': 'remaining_delivery_cost_progress_times_efficiency',
     'transfer_policy': TRANSFER_POLICY,
@@ -41,7 +41,12 @@ def prepare_reference(env, truth, session):
     else:
         if not hasattr(env, 'evaluation_navigation'):
             return {'status': 'unavailable', 'reason': 'environment_has_no_navigation_snapshot'}, None
-        grid = GridDistance(**env.evaluation_navigation())
+        try:
+            snapshot = (env.evaluation_arrival(truth['goals'])
+                        if hasattr(env, 'evaluation_arrival') else env.evaluation_navigation())
+            grid = GridDistance(**snapshot)
+        except (KeyError, ValueError) as exc:
+            return {'status': 'unavailable', 'reason': str(exc)}, None
     folder = Path(session)/'evaluation'
     folder.mkdir(exist_ok=True)
     file = folder/(safe_id(truth['task_id'])+'.npz')
@@ -50,6 +55,10 @@ def prepare_reference(env, truth, session):
         'sha256': sha256_file(file), 'distance_type': 'grid_geodesic_8',
         'resolution_m': grid.resolution, 'robot_radius_m': grid.radius,
         'carried_door_radius_m': grid.carried_radius}
+    if not transfer:
+        from .navigation import NAVIGATION_REFERENCE_VERSION
+        reference.update(navigation_reference_version=NAVIGATION_REFERENCE_VERSION,
+                         arrival_policy='target_height_approach_with_full_robot_standing_clearance')
     if transfer:
         reference.update(kind='transfer_cost', cost_unit=TRANSFER_POLICY['cost_unit'],
                          move_step_m=grid.step)
@@ -69,6 +78,20 @@ def _finite(value):
     return value if math.isfinite(value) else None
 
 
+def navigation_reference_changed(grid, actions):
+    """Reject logged topology edits and changes in the actual collision map."""
+    expected = collision_digest(grid)
+    for event in actions:
+        if ((_name(event) in {'pick','place','open','close'} and event.get('result', {}).get('success'))
+                or event.get('state_changes', {}).get('objects')):
+            return True
+        for phase in ('before', 'after'):
+            key = 'navigation_collision_'+phase+'_sha256'
+            if key in event and event[key] != expected:
+                return True
+    return False
+
+
 def navigation_metric(truth, grid, poses, actions):
     """Use only the ordered completed prefix; never sum independent best passes."""
     goals = [g for g in truth['goals'] if g['goal_kind'] in NAVIGATION]
@@ -76,6 +99,8 @@ def navigation_metric(truth, grid, poses, actions):
     if not poses:
         raise ValueError('navigation metric requires actual poses')
     points = [p['position'][:2] for p in poses]
+    if navigation_reference_changed(grid, actions):
+        raise ValueError('navigation world changed since task-start collision reference')
     for event in actions:
         if _name(event) in {'pick','place','open','close'} and event['result'].get('success'):
             raise ValueError('navigation topology changed during task; frozen path reference is not comparable')

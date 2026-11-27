@@ -10,11 +10,11 @@ from .snapshots import StateBranch
 from .contextual import instantiate_request_v3
 from .navigation import navigation_task
 from .placement import floor_placement
-from .raster import derive_navigation
+from .raster import derive_navigation, derive_arrival_navigation
 from .state import geometry
 from .navigation_io import read_navigation_npz
 
-PROJECTION_VERSION = 'grid_aabb_expected_success_v1'
+PROJECTION_VERSION = 'grid_aabb_expected_success_v2'
 
 
 class PlannedProjection:
@@ -37,7 +37,7 @@ class PlannedProjection:
         self.ledger = {}
         self.branch = StateBranch(self.cache, initial, source='planned')
 
-    def _grid(self, state):
+    def _grid(self, state, *, arrival_object_ids=None):
         entities = []
         for raw in state['objects'].values():
             entity = deepcopy(raw)
@@ -50,6 +50,12 @@ class PlannedProjection:
         grid['scene_id'] = self.metadata['scene']['scene_id']
         if self.navigation.get('robot_profile') is not None:
             grid['robot_profile'] = deepcopy(self.navigation['robot_profile'])
+        if arrival_object_ids is not None:
+            from ..evaluation.navigation import GridDistance
+            grid['arrival_grid'] = GridDistance(**derive_arrival_navigation(
+                self.metadata['rooms'], entities, arrival_object_ids,
+                resolution=self.navigation['resolution'], robot_radius=self.navigation['robot_radius'],
+                environment_setup=self.navigation.get('environment_setup')))
         position = state['robot_pose']['position']
         start = tuple(math.floor((position[i]-grid['origin_xy'][i])/grid['resolution']) for i in (0, 1))
         return grid, entities, start
@@ -99,8 +105,12 @@ class PlannedProjection:
         """Atomically project a frozen request; errors leave the branch unchanged."""
         before = self.branch.snapshot()
         state = before.state
+        navigation_ids = [goal['target']['object_ids'][0] for goal in truth['goals']
+                          if goal['goal_kind'] in {'visit', 'establish_place', 'revisit_place'}]
+        arrival = self._grid(state, arrival_object_ids=navigation_ids)[0]['arrival_grid'] if navigation_ids else None
         repair = instantiate_request_v3(public, truth, template, self.cache, state,
-                                        self.branch.history(), self.ledger, state_source='planned')
+                                        self.branch.history(), self.ledger, state_source='planned',
+                                        navigation=arrival)
         if repair['status'] == 'unavailable':
             raise ValueError('planned request could not be instantiated: '+str(repair['repair_record']))
         truth = repair['runtime_ground_truth']
@@ -129,15 +139,20 @@ class PlannedProjection:
                         raise ValueError('planned named place is unavailable')
                     entity['geometry'] = deepcopy(bound['planned_place_geometry'])
                     entity.pop('pose', None)
-                grid, _, start = self._grid(state)
-                route = navigation_task(entity, grid, 0, start=start)
+                grid, _, start = self._grid(state, arrival_object_ids=[oid])
+                route = navigation_task(entity, grid, 0, start=start,
+                    arrival_grid=grid['arrival_grid'], arrival_goal=goal,
+                    start_position=state['robot_pose']['position'])
                 if route is None:
                     raise ValueError('goal has no route in the declared grid model')
                 path = route[1]['reference_trajectory']
                 row['paths'].append(path)
                 state['robot_pose']['position'] = deepcopy(path['points'][-1]['position'])
                 if kind == 'establish_place':
-                    row['planned_place_geometry'] = deepcopy(goal['named_place']['geometry'])
+                    position = state['robot_pose']['position']
+                    row['planned_place_geometry'] = {'world_aabb': {
+                        'min': [value-.05 for value in position],
+                        'max': [value+.05 for value in position]}}
             elif kind == 'transfer':
                 rule = spec['contract']
                 room = goal['success_criteria']['room_id']

@@ -13,7 +13,8 @@ from roboodyssey.contracts.contextual import (
     prepare_mutation_v3,
     RuntimeContractError,
 )
-from ..evaluation.requests import evaluate_request, request_totals
+from ..evaluation.requests import evaluate_request, request_totals, SUCCESS_RULE_VERSION
+from ..evaluation.navigation import GridDistance, OrderedRoute
 from ..evaluation.task_metrics import evaluate_metrics, prepare_reference
 from ..evaluation.transfer import TransferReference, collision_digest
 from .environment import RequestEnvironment, RequestEnvironmentFactory
@@ -214,13 +215,19 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
             _merge_memory(memory, response)
             for public, truth, template in zip(session.tasks, truths, templates):
                 before = actual_state(env, cache)
+                navigation_task = any(g['goal_kind'] in {'visit','establish_place','revisit_place'}
+                                      for g in truth['goals'])
+                metric_reference, metric_grid = ({"status": "not_required"}, None)
+                if navigation_task:
+                    # Exclusions need the same saved obstacle proof as success.
+                    metric_reference, metric_grid = prepare_reference(env, truth, output)
                 repair = instantiate_request_v3(
-                    public, truth, template, cache, before, history, ledger
+                    public, truth, template, cache, before, history, ledger,
+                    navigation=metric_grid,
                 )
                 record = repair["repair_record"]
                 decision_id = f"{session.session_id}:{events.counter + 1:06d}"
-                metric_reference, metric_grid = ({"status": "not_required"}, None)
-                if repair["status"] == "ready":
+                if repair["status"] == "ready" and not navigation_task:
                     metric_reference, metric_grid = prepare_reference(
                         env, repair["runtime_ground_truth"], output
                     )
@@ -233,6 +240,7 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                         "state_before": before,
                         "source_context": source_context(template, history),
                         "metric_reference": metric_reference,
+                        "success_rule_version": SUCCESS_RULE_VERSION,
                         "decision_event_id": decision_id,
                     },
                 )
@@ -246,6 +254,7 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                     repair_record=record,
                 )
                 base = {
+                    "success_rule_version": SUCCESS_RULE_VERSION,
                     "task_id": public["task_id"],
                     "task_type": public["task_type"],
                     "task_family": public["task_family"],
@@ -291,6 +300,9 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                     )
                 else:
                     task, gt = (repair["public_task"], repair["runtime_ground_truth"])
+                    arrival_route = (OrderedRoute(metric_grid, [g for g in gt['goals']
+                                     if g['goal_kind'] in {'visit','establish_place','revisit_place'}])
+                                     if isinstance(metric_grid, GridDistance) else None)
                     task_started = time.monotonic()
                     request_seconds = action_seconds = 0.0
                     request_count = 0
@@ -416,7 +428,7 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                         action_before = actual_state(env, cache)
                         collision_before = (
                             collision_digest(env.evaluation_navigation())
-                            if isinstance(metric_grid, TransferReference)
+                            if isinstance(metric_grid, TransferReference) or (navigation_task and metric_grid is not None)
                             else None
                         )
                         forbidden = any(
@@ -461,12 +473,9 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                             "state_changes": state_changes(action_before, state),
                         }
                         if collision_before is not None:
-                            event.update(
-                                transfer_collision_before_sha256=collision_before,
-                                transfer_collision_after_sha256=collision_digest(
-                                    env.evaluation_navigation()
-                                ),
-                            )
+                            prefix = 'navigation' if navigation_task else 'transfer'
+                            event[prefix+'_collision_before_sha256'] = collision_before
+                            event[prefix+'_collision_after_sha256'] = collision_digest(env.evaluation_navigation())
                         actions.append(event)
                         poses.append(event["after"])
                         event["event_id"] = (
@@ -482,7 +491,7 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                             **{k: v for k, v in event.items() if k != "event_id"},
                         )
                         evaluated = evaluate_request(
-                            gt, state, poses, actions, observations, answer
+                            gt, state, poses, actions, observations, answer, navigation=arrival_route
                         )
                         if evaluated["success"]:
                             stop_reason = "success"
@@ -501,7 +510,7 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                     runner._end_observations()
                     after = actual_state(env, cache)
                     evaluated = evaluate_request(
-                        gt, after, poses, actions, observations, answer
+                        gt, after, poses, actions, observations, answer, navigation=arrival_route
                     )
                     result = {
                         **base,

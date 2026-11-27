@@ -642,6 +642,29 @@ class IsaacVLNEnv:
             snapshot.update(door_blocked=doors, carried_radius=self._collision_radius())
         return snapshot
 
+    def evaluation_arrival(self, goals) -> dict[str, Any]:
+        """Private obstacle evidence for success, planning and CPU replay."""
+        snapshot = self.evaluation_navigation()
+        if not getattr(self, '_environment_setup', None):
+            # Older backends provide only combined occupancy. Keep every
+            # obstacle; never erase the target AABB from that combined map.
+            return snapshot
+        from roboodyssey.contracts.raster import derive_arrival_navigation
+        state = self.runtime_state_v5()
+        objects = [obj for obj in state['objects'].values()
+                   if not obj.get('held') and obj['object_id'] != self._held_object]
+        targets = [g['target']['object_ids'][0] for g in goals
+                   if g['goal_kind'] in {'visit', 'establish_place'}]
+        arrival = derive_arrival_navigation(
+            self._metadata['rooms'], objects, targets, resolution=self._resolution,
+            robot_radius=float(self.config.robot_radius),
+            environment_setup=self._environment_setup)
+        if (not self._np.array_equal(arrival['blocked'], snapshot['blocked'])
+                or not self._np.allclose(arrival['origin'], snapshot['origin'])):
+            raise ValueError('arrival geometry differs from actual collision occupancy')
+        snapshot['target_blocked'] = arrival['target_blocked']
+        return snapshot
+
     def evaluation_transfer(self, goals) -> dict[str, Any]:
         """Freeze actual interaction origins, room labels and removable occupancy."""
         from ..evaluation.transfer import TRANSFER_POLICY
