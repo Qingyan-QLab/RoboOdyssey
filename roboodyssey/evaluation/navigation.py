@@ -8,6 +8,8 @@ import math
 import numpy as np
 
 
+NAVIGATION_REFERENCE_VERSION = 'grid_distance_v1'
+
 class GridDistance:
     def __init__(self, blocked, origin, resolution, radius=0.0, door_blocked=None, carried_radius=0.0):
         self.raw = np.asarray(blocked, dtype=bool)
@@ -123,6 +125,32 @@ class GridDistance:
 
     def query(self, distance, point):
         return min((float(distance[y,x])+offset for y,x,offset in self.connectors(point)), default=math.inf)
+
+    def next_waypoint(self, distance, point):
+        """Return one collision-checked descent waypoint, or None when unreachable.
+
+        Callers decide task/phase completion from actual feedback. The field
+        can include terminal costs for later stages and need not end at zero.
+        """
+        field = np.asarray(distance, dtype=float)
+        if field.shape != self.raw.shape:
+            raise ValueError('distance field shape differs from navigation map')
+        choices = [(float(field[y, x])+offset, offset, y, x)
+                   for y, x, offset in self.connectors(point) if math.isfinite(field[y, x])]
+        if not choices:
+            return None
+        _, offset, y, x = min(choices)
+        if offset > 1e-6:
+            return [float(self.xx[y, x]), float(self.yy[y, x])]
+        lower = []
+        for dy, dx in ((0,1),(0,-1),(1,0),(-1,0),(1,1),(1,-1),(-1,1),(-1,-1)):
+            ny, nx = y+dy, x+dx
+            if not (0 <= nx < self.width and 0 <= ny < self.height) or field[ny, nx] >= field[y, x]-1e-9:
+                continue
+            target = [float(self.xx[ny, nx]), float(self.yy[ny, nx])]
+            if self.connected_segment(point, target):
+                lower.append((float(field[ny, nx])+math.dist(point[:2], target), ny, nx, target))
+        return min(lower)[-1] if lower else [float(self.xx[y, x]), float(self.yy[y, x])]
 
     def between(self, a, b):
         if self.connected_segment(a, b):

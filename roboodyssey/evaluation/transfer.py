@@ -14,6 +14,7 @@ import math
 import numpy as np
 
 from .navigation import GridDistance
+from ..contracts.state import apply_object_deltas
 
 
 TRANSFER_POLICY = {
@@ -160,10 +161,8 @@ class TransferReference(GridDistance):
         return (placed and _held(state) != self.target and obj['room_id'] == room
                 and abs(_box(obj)[0, 2]-self.metadata['floor_heights'][room]) <= .04)
 
-    def remaining(self, goal, state, placed=False):
-        if self.completed(goal, state, placed):
-            return 0.0
-        obj, point = state['objects'][self.target], state['robot_pose']['position'][:2]
+    def _planning_fields(self, goal, state):
+        obj = state['objects'][self.target]
         box, pivot = _box(obj), _pivot(obj)
         held = _held(state) == self.target
         # Translation does not change carry geometry. Cache fields while walking.
@@ -181,7 +180,15 @@ class TransferReference(GridDistance):
             if len(self._fields) > 4:
                 self._fields.popitem(last=False)
         self._fields.move_to_end(key)
-        carry, delivery, approach, pickup = self._fields[key]
+        return self._fields[key]
+
+    def remaining(self, goal, state, placed=False):
+        if self.completed(goal, state, placed):
+            return 0.0
+        obj, point = state['objects'][self.target], state['robot_pose']['position'][:2]
+        pivot = _pivot(obj)
+        held = _held(state) == self.target
+        carry, delivery, approach, pickup = self._planning_fields(goal, state)
         distance = carry.query(delivery, point)
         if carry.walkable(point) and self.placement_mask(obj, goal['success_criteria']['room_id'],
                 *point, yaw=state['robot_pose'].get('yaw_degrees')):
@@ -194,6 +201,37 @@ class TransferReference(GridDistance):
         if math.dist(point, pivot[:2]) <= self.pick_radius and carry.walkable(point):
             cost = min(cost, distance/self.step+2)
         return cost
+
+    def guidance(self, goal, state, *, placed=False):
+        """Expose the exact scoring model's fields to executable strategies.
+
+        This is reference guidance only: pick/place completion still requires
+        the environment's real feedback and the common success predicate.
+        """
+        self.validate_state(state)
+        obj, point = state['objects'][self.target], state['robot_pose']['position'][:2]
+        carry, delivery, approach, pickup = self._planning_fields(goal, state)
+        held = _held(state) == self.target
+        yaw = None
+        room = goal['success_criteria']['room_id']
+        if held and carry.walkable(point) and self.placement_mask(obj, room, *point):
+            box, pivot = _box(obj), _pivot(obj)
+            offset = (box[0]+box[1])/2-pivot
+            label = self.room_ids.index(room)+1
+            angles = [float(state['robot_pose'].get('yaw_degrees', 0)),
+                      *[i*360/TRANSFER_POLICY['placement_heading_samples']
+                        for i in range(TRANSFER_POLICY['placement_heading_samples'])]]
+            for heading in angles:
+                angle = math.radians(heading)
+                destination = self.room_labels_at(point[0]+self.place_offset*math.cos(angle)+offset[0],
+                                                 point[1]+self.place_offset*math.sin(angle)+offset[1])
+                if destination in (0, label):
+                    yaw = heading
+                    break
+        return {'phase': 'completed' if self.completed(goal, state, placed) else 'carry' if held else 'approach',
+                'grid': carry if held else approach, 'field': delivery if held else pickup,
+                'can_pick': not held and math.dist(point, _pivot(obj)[:2]) <= self.pick_radius and carry.walkable(point),
+                'placement_yaw_degrees': yaw, 'cost': self.remaining(goal, state, placed)}
 
     def validate_state(self, state):
         if set(state['objects']) != set(self.initial['objects']):
@@ -268,12 +306,7 @@ def transfer_metric(goal, reference, before, after, actions, expected_success):
             walk += displacement
         if name in {'pick', 'place'}:
             attempts += 1
-        for delta in event.get('state_changes', {}).get('objects', []):
-            obj = state['objects'][delta['object_id']]
-            for key, change in delta['changes'].items():
-                if obj.get(key) != change['before']:
-                    raise ValueError('transfer object delta has conflicting before state')
-                obj[key] = deepcopy(change['after'])
+        apply_object_deltas(state['objects'], event.get('state_changes', {}).get('objects', []))
         held = event.get('state_changes', {}).get('held_object')
         if held:
             if state.get('held_object') != held['before']:

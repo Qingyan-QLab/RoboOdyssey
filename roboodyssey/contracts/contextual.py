@@ -163,7 +163,30 @@ def prepare_mutation_v3(initial, mutation, cache, state, history):
         raise RuntimeContractError('mutation source dispatch decision missing')
     return prepare_mutation(initial, mutation, state, history)
 
-def instantiate_request_v3(public, truth, template, cache, state, history, introduced=None):
+def instantiate_request_v3(public, truth, template, cache, state, history, introduced=None, *, state_source='actual'):
+    """Resolve shared semantics from explicitly actual or planned experiences.
+
+    Planned consumers use assumed_* fields; they cannot supply execution facts.
+    The actual default refuses planned events even when they also carry actual
+    looking keys. State/dispatch assumptions are retained in the returned GT.
+    """
+    if state_source not in {'actual', 'planned'}:
+        raise RuntimeContractError('invalid request state source')
+    planned = state_source == 'planned'
+    for event in history:
+        event_planned = (event.get('state_source') == 'planned' or
+                         event.get('evidence_status') == 'planned_success_assumption' or
+                         any(key.startswith('assumed_') for key in event))
+        if event_planned != planned:
+            raise RuntimeContractError('planned and actual histories cannot be mixed')
+        if planned and (event.get('state_source') != 'planned' or
+                        any(key in event for key in ('dispatched', 'success', 'location_experience', 'place_established'))):
+            raise RuntimeContractError('planned history must use explicit assumption fields')
+    fields = {'dispatched': 'assumed_dispatch', 'success': 'assumed_success',
+              'location_experience': 'assumed_location_experience',
+              'place_established': 'assumed_place_established', 'place_geometry': 'planned_place_geometry'}
+    def evidence(event, key, default=None):
+        return event.get(fields.get(key, key) if planned else key, default)
     introduced = deepcopy(introduced or {})
     if (template.get('schema_version') != 3 or template.get('task_id') != public['task_id']
             or truth.get('task_id') != public['task_id'] or render_request(template) != public['instruction']
@@ -171,11 +194,13 @@ def instantiate_request_v3(public, truth, template, cache, state, history, intro
         raise RuntimeContractError('public request, frozen template and GT mismatch')
     state = normalize_state(cache, state)
     runtime, frozen = deepcopy(truth), deepcopy(template)
-    runtime.update(state_assumption='actual_predispatch_state')
+    runtime.update(state_assumption=state_source+'_predispatch_state')
     runtime.pop('reference_steps',None)
     slots = deepcopy(template['preview_slots'])
     record = {'task_id':public['task_id'], 'changed':False, 'scored':True, 'dispatched':False,
               'steps':[], 'reason_code':None, 'conversions':[], 'failure_causes':[]}
+    if planned:
+        record['state_source'] = 'planned'
     intros = []
     names = cache.get('names',{}).get('objects',{})
     current_binding, relevant = None, set()
@@ -198,7 +223,7 @@ def instantiate_request_v3(public, truth, template, cache, state, history, intro
             current_binding = binding
             event = bound_record(binding, oid, history) if binding else None
             converted, destination = False, None
-            if event and event.get('dispatched') is False:
+            if event and evidence(event, 'dispatched') is False:
                 if event.get('reason_code') == 'already_satisfied':
                     if goal['goal_kind'] == 'revisit_place':
                         raise RuntimeContractError('a place establishment cannot be already satisfied')
@@ -226,12 +251,12 @@ def instantiate_request_v3(public, truth, template, cache, state, history, intro
                     raise RepairUnavailable('unavailable', 'bound experience unavailable after earlier failure', code='source_experience_unavailable')
                 else:
                     raise RuntimeContractError('undispatched source lacks a supported decision reason')
-            elif event and event.get('dispatched') is not True:
+            elif event and evidence(event, 'dispatched') is not True:
                 raise RuntimeContractError('source dispatch state missing')
             if (event and not converted and goal['goal_kind'] != 'revisit_place'
                     and (goal.get('query') in {'room_before','room_after','has_changed'} or rule.get('destination_mode') == 'history')
-                    and event.get('location_experience') is not True):
-                if event.get('success') is False:
+                    and evidence(event, 'location_experience') is not True):
+                if evidence(event, 'success') is False:
                     raise RepairUnavailable('unavailable', 'failed source established no actual location experience', code='source_experience_unavailable')
                 raise RuntimeContractError('location source lacks actual encounter evidence')
             hide = goal.get('query') in {'current_room','has_changed'}
@@ -281,19 +306,19 @@ def instantiate_request_v3(public, truth, template, cache, state, history, intro
                     goal['success_criteria']={'comparison':'accepted_answer','require_valid_observation':True}
                     goal['capabilities']=sorted(set(goal['capabilities'])|{'navigation','qa'})
             elif goal['goal_kind']=='revisit_place':
-                if not event.get('place_established'):
-                    if event.get('success') is False:
+                if not evidence(event, 'place_established'):
+                    if evidence(event, 'success') is False:
                         raise RepairUnavailable('unavailable','failed establishment did not create the named place',code='named_place_not_established')
                     raise RuntimeContractError('successful establishment lacks actual place evidence')
-                if not event.get('place_geometry',{}).get('world_aabb'):raise RuntimeContractError('actual place geometry missing')
-                goal['fixed_target_geometry']=deepcopy(event['place_geometry'])
-                goal['named_place']['geometry']=deepcopy(event['place_geometry'])
+                if not evidence(event, 'place_geometry', {}).get('world_aabb'):raise RuntimeContractError('actual place geometry missing')
+                goal['fixed_target_geometry']=deepcopy(evidence(event, 'place_geometry'))
+                goal['named_place']['geometry']=deepcopy(evidence(event, 'place_geometry'))
             if goal['goal_kind'] in {'visit','revisit_place','establish_place'}:
                 geom=goal['fixed_target_geometry'] if goal['goal_kind']=='revisit_place' else geometry(obj)
                 if goal['goal_kind']=='establish_place':goal['named_place']['geometry']=deepcopy(geom)
                 goal['expected_outcome']={'reached_target':True,'target_geometry':{'type':'aabb_2d',
                     'world_aabb_xy':{k:geom['world_aabb'][k][:2] for k in ('min','max')}}}
-            goal['state_assumption']='actual_predispatch_state'
+            goal['state_assumption']=state_source+'_predispatch_state'
             for stale in ('reference_trajectory','reference_stages','reference_actions','placement_validation'):
                 goal.pop(stale,None)
         text=render_request(frozen,slots,intros)

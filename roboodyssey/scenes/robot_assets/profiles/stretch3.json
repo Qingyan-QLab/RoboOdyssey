@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "model_id": "stretch3",
+  "mode": "kinematic_avatar",
+  "asset": "../usd/stretch3/avatar.usdc",
+  "asset_files": [
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/Physics/mujoco.usda",
+      "sha256": "49b201b86322d563488954bde1309af1c3ce6be8e5b92ea58ba394d51296347b"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/Physics/physics.usda",
+      "sha256": "790336eed36c8d67ca55287b5cf3b596613a4eed6524a933e0f3ee37a27a9942"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/Physics/physx.usda",
+      "sha256": "31c6bb1cfade31012e9d66e957bb637f8365133f724b6efa252b653b672a6eb2"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/base.usda",
+      "sha256": "7d82e793ba46d2e00effcd6fd5de7f5576cc2b69c60a54cc3ad6b6b6b8971341"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/geometries.usd",
+      "sha256": "5d5f64fba6c524548052edc69a7e049488c0b02d9239a86bf3a8bda5b51a362c"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/instances.usda",
+      "sha256": "7626f177f51665ce4b84e7b93dee252d6bda338be13dc754e00e5e6d6bac8a79"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/materials.usda",
+      "sha256": "ce491eb997707ee615942cabb187a26bab1365900fb1e1bc3c97a8c5d82d00df"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/payloads/robot.usda",
+      "sha256": "a65d764d7e3a662edd71c2939897e21a6edfbc870d10be7725d761433e89fd06"
+    },
+    {
+      "path": "../usd/stretch3/articulated/robot/robot.usda",
+      "sha256": "d00dfb40439e0a5c9b01d8652d8c3788e31bce73357f17d086e1d797b0edb718"
+    },
+    {
+      "path": "../usd/stretch3/avatar.usdc",
+      "sha256": "762d2c626a1ccc6b7755e0af0a5fcc10900d1941307fd1bdc95c9efb58bf81e2"
+    }
+  ],
+  "source_lock_sha256": "4454754f9fc68f3e3b0d8a8c315b945cdaceba067f4700052acd3cba446ce258",
+  "camera_height_m": 1.5,
+  "camera_kind": "virtual_evaluation_camera_above_body",
+  "pose": "configured_static_pose",
+  "joint_positions_rad_or_m": {
+    "joint_lift": 0.45,
+    "joint_wrist_yaw": 3.14
+  },
+  "articulated_asset": "../usd/stretch3/articulated/robot/robot.usda",
+  "visual_bounds_min_m": [
+    -0.2764972448348999,
+    -0.1985648541282357,
+    1.933398013054255e-05
+  ],
+  "visual_bounds_max_m": [
+    0.052594916902249836,
+    0.1714971959590912,
+    1.409864331253106
+  ],
+  "base_offset_z_m": -1.933398013054255e-05,
+  "robot_radius_m": 0.29,
+  "body_height_m": 1.4098449972729754,
+  "profile_version": "stretch3_kinematic_circle_v1",
+  "collision_geometry": {
+    "method": "visible_mesh_vertices_root_xy_enclosing_circle_v1",
+    "mesh_count": 36,
+    "vertex_count": 117175,
+    "visible_min_m": [
+      -0.2764972448348999,
+      -0.1985648541282357,
+      1.933398013054255e-05
+    ],
+    "visible_max_m": [
+      0.052594916902249836,
+      0.1714971959590912,
+      1.409864331253106
+    ],
+    "visible_size_xyz_m": [
+      0.3290921617371497,
+      0.3700620500873269,
+      1.4098449972729754
+    ],
+    "width_half_m": 0.18503102504366345,
+    "root_xy_max_radius_m": 0.276497244903746,
+    "farthest_vertex_m": [
+      -0.2764972448348999,
+      6.1702107814198826e-06,
+      0.08819999545812607
+    ],
+    "safety_margin_m": 0.01,
+    "round_up_quantum_m": 0.01,
+    "robot_radius_m": 0.29,
+    "scope": "fixed-pose visible body, yaw-invariant 2D conservative proxy; excludes held objects"
+  }
+}

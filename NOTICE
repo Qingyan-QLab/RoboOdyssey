@@ -8,3 +8,7 @@ are adapted from the MIT-licensed CL_session_builder / CL_task_builder sources.
 Their copyright and permission notice is preserved in roboodyssey/contracts/LICENSE.
 These sources are included in this repository; neither generation package is a runtime dependency.
 Published scene archives are distributed separately from the benchmark source.
+
+Bundled Stretch 3 USD assets derive from Hello Robot stretch_urdf.
+See benchmark/scenes/robot_assets/LICENSE-stretch_urdf.md (Clear BSD) and
+sources.lock.json for the pinned upstream source revisions and checksums.

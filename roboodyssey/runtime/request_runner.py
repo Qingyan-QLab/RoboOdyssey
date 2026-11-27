@@ -88,8 +88,9 @@ def resolve_action(action, cache, ledger):
     return action
 
 
-def load_runtime_context(root):
-    return SequenceData(root).mutation_context()
+def load_runtime_context(root, scene=None):
+    from ..data import load_sequence
+    return load_sequence(root, scene=scene).mutation_context()
 
 
 def apply_boundary(env: RequestEnvironment, context, mutations, cache, history, output, events=None):
@@ -171,7 +172,7 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                 env = env_factory(
                     scene_id, deepcopy(canonical_state), session.session_id
                 )
-                context = session.runtime_context if session.runtime_context is not None else load_runtime_context(paths["dataset_root"])
+                context = session.runtime_context if session.runtime_context is not None else load_runtime_context(paths["dataset_root"], paths.get("scene_version_root"))
             events = RequestEvents(runner, env, output, scene_id, session.session_id)
             if runner.transition_callback:
                 runner.transition_callback()
@@ -300,6 +301,12 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                         lambda: capture_observation(env),
                         lambda obs: public_observation(obs, cache, ledger),
                     )
+                    if runner.observation_archive is not None:
+                        runner._capture_context = lambda: {
+                            'scene_id': scene_id, 'session_id': session.session_id,
+                            'task_id': task['task_id'], 'state': actual_state(env, cache),
+                            'camera_pose': env.get_camera_pose() if hasattr(env, 'get_camera_pose') else None,
+                        }
                     stop_reason = "step_limit"
                     for step in range(runner.max_steps):
                         if (
@@ -332,6 +339,20 @@ def run_requests(runner, scene_id, sessions, canonical_state, env_factory: Reque
                             step=step,
                         )
                         request_started = time.monotonic()
+                        if runner.private_policy:
+                            runner._set_policy_context(
+                                scene_id=scene_id, session_id=session.session_id,
+                                task=deepcopy(task), ground_truth=deepcopy(gt),
+                                state=actual_state(env, cache), history=deepcopy(history),
+                                cache=deepcopy(cache), ledger=deepcopy(ledger),
+                                poses=deepcopy(poses), actions=deepcopy(actions),
+                                observations=deepcopy(observations),
+                                feedback=deepcopy(actions[-1]['result']) if actions else None,
+                                reference=metric_grid, metric_reference=deepcopy(metric_reference),
+                                raw_public_observation=public_observation(observation, cache, ledger),
+                                navigation_snapshot=deepcopy(env.evaluation_navigation())
+                                if hasattr(env, 'evaluation_navigation') else None,
+                            )
                         response = runner._request(
                             {
                                 "type": "step",

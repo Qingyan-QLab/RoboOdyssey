@@ -31,6 +31,7 @@ class ObservationClock:
     def __init__(self, *, clock=time.monotonic, sleep=time.sleep):
         self.clock, self.sleep = clock, sleep
         self.on_event = None
+        self.on_sample = None
         self.source = self.origin = None
         self.next_slot = self.frame_id = 0
         self.missed = 0
@@ -81,6 +82,8 @@ class ObservationClock:
         }
         observation['timing'] = timing
         self._emit('sample', **timing)
+        if self.on_sample is not None:
+            self.on_sample(observation, evidence)
         return observation, evidence
 
     def take(self, on_wait=None):

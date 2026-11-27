@@ -71,6 +71,8 @@ def change(state, name, x=None, y=None, yaw=None, success=True):
     if name == 'place' and success:
         px, py = p['position'][0]+.8*math.cos(angle), p['position'][1]+.8*math.sin(angle)
         state['objects']['book'] = object_at(px, py, room='study' if px >= 25 else 'hall')
+        # The real first place adds both a value and an explicitly null field.
+        state['objects']['book'].update(placement_surface='floor', support_object_id=None)
         state['held_object'] = None
     if state['held_object'] == 'book':
         px = p['position'][0]+.75*math.cos(angle)-.35*math.sin(angle)
@@ -101,6 +103,20 @@ def run_cost(before, snapshot, *commands):
 
 
 class TransferCostTests(unittest.TestCase):
+    def test_actual_delta_replay_preserves_missing_null_and_removed_fields(self):
+        from roboodyssey.evaluation.rescore import final_state
+        before = fixture()[1]
+        before['objects']['book']['removed'] = None
+        after = deepcopy(before)
+        after['objects']['book'].update(placement_surface='floor', support_object_id=None)
+        del after['objects']['book']['removed']
+        deltas = state_changes(before, after)
+        action = {'after': after['robot_pose'], 'state_changes': deltas}
+        self.assertEqual(final_state(before, [action]), after)
+        changes = deltas['objects'][0]['changes']
+        self.assertFalse(changes['support_object_id']['before_present'])
+        self.assertFalse(changes['removed']['after_present'])
+
     def test_continuous_approach_pick_carry_and_place_use_one_reference_cost(self):
         gt, before, snapshot = fixture()
         ref = TransferReference(**snapshot)
@@ -270,7 +286,7 @@ class TransferCostTests(unittest.TestCase):
         grid = derive_navigation(rooms, list(before['objects'].values()), resolution=1,
                                  robot_radius=0, environment_setup=setup)
         env = IsaacVLNEnv.__new__(IsaacVLNEnv)
-        env._np = np; env.config = EnvConfig(robot_radius=0, move_step=1)
+        env._np = np; env.config = EnvConfig(robot_body=None, robot_radius=0, move_step=1)
         env._metadata = {'rooms': rooms}; env._environment_setup = setup
         env._objects = deepcopy(before['objects']); env._held_object = None
         env._pickable = {'book'}; env._floor_height = 0
@@ -284,6 +300,48 @@ class TransferCostTests(unittest.TestCase):
         carry = reference.grid(before, carrying=True)
         self.assertFalse(carry.walkable([12.6, 5.5]))
         self.assertGreater(reference.remaining(gt['goals'][0], before), 0)
+
+    def test_collision_refresh_uses_readback_at_float_mesh_cell_boundaries(self):
+        from roboodyssey.contracts.raster import derive_navigation
+        from roboodyssey.contracts.doors import POLICY
+        from roboodyssey.scenes.isaac_env import IsaacVLNEnv, EnvConfig
+        gt, state, _ = fixture()
+        rooms = [{'room_id': 'hall', 'boundary_polygon': [[0,0],[3,0],[3,3],[0,3]]},
+                 {'room_id': 'study', 'boundary_polygon': [[3,0],[6,0],[6,3],[3,3]]}]
+        state['objects']['book'] = object_at(1.1, 1.1, .5)
+        state['robot_pose'] = pose(2, 2)
+        authored = deepcopy(state['objects'])
+        bounds = state['objects']['book']['geometry']['world_aabb']
+        # Reproduce float32 mesh extents at double USD transforms, not a
+        # hypothetical moved object or a tolerance in the equality check.
+        bounds['min'] = [.999999998509884, .999999998509884, .399999998509884]
+        bounds['max'] = [1.200000001490116, 1.200000001490116, .600000001490116]
+        setup = {'policy': POLICY, 'doors': []}
+        grid = derive_navigation(rooms, list(authored.values()), resolution=.1,
+                                 robot_radius=.1, environment_setup=setup)
+        env = IsaacVLNEnv.__new__(IsaacVLNEnv)
+        env._np = np; env.config = EnvConfig(robot_body=None, robot_radius=.1)
+        env._metadata = {'rooms': rooms}; env._environment_setup = setup
+        env._objects = authored; env._held_object = None
+        env._pickable = {'book'}; env._floor_height = 0
+        env._navigation = {key: np.asarray(value) if isinstance(value, list) else value
+                           for key, value in grid.items()}
+        env._static_base = np.asarray(grid['static_base_occupancy'], bool)
+        env._static = np.asarray(grid['static_occupancy'], bool)
+        env._dynamic = np.asarray(grid['dynamic_occupancy'], bool)
+        env._origin = np.asarray(grid['origin_xy']); env._resolution = .1
+        env._room_labels = np.asarray(grid['room_labels']); env._room_ids = grid['room_ids']
+        env._door_open = set(); env._door_cells = {}
+        env.runtime_state_v5 = lambda: deepcopy(state)
+        with self.assertRaisesRegex(ValueError, 'does not reproduce'):
+            TransferReference(**env.evaluation_transfer(gt['goals']))
+        env._refresh_vlm_navigation()
+        reference = TransferReference(**env.evaluation_transfer(gt['goals']))
+        np.testing.assert_array_equal(reference.grid(state).raw, env.evaluation_navigation()['blocked'])
+        state['held_object'] = env._held_object = 'book'
+        state['objects']['book']['held'] = True
+        env._refresh_vlm_navigation()
+        self.assertEqual(collision_digest(reference.grid(state)), collision_digest(env.evaluation_navigation()))
 
     def test_partial_runtime_evidence_recomputes_offline_and_exports_cost_details(self):
         try:
@@ -353,7 +411,7 @@ class TransferCostTests(unittest.TestCase):
                     obj.update(held=False, interaction_position=np.mean([box['min'],box['max']],axis=0).tolist())
                 avatar = self.avatar = IsaacVLNEnv.__new__(IsaacVLNEnv)
                 grid = self.raster()
-                avatar._np = np; avatar.config = EnvConfig(robot_radius=.1)
+                avatar._np = np; avatar.config = EnvConfig(robot_body=None, robot_radius=.1)
                 avatar._metadata = {'rooms':rooms}; avatar._environment_setup = setup
                 avatar._objects = self.state['objects']; avatar._held_object = None
                 avatar._pickable = {'book_red','cup_blue'}; avatar._floor_height = 0

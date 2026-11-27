@@ -1,0 +1,124 @@
+{
+  "date": "2026-11-26",
+  "status": "passed",
+  "public_distribution": "RoboOdyssey",
+  "public_version": "0.2.1",
+  "public_import": "roboodyssey",
+  "robot_profile": {
+    "model_id": "stretch3",
+    "mode": "kinematic_avatar",
+    "profile_sha256": "77817109dbf2382f623889e181a8092184be74ce16c865716b1285a43dbf0be1",
+    "assets_sha256": "314f3bf749630681f50bd836b6837fb4b79fd7d61131372e322dac68345d45b3",
+    "profile_version": "stretch3_kinematic_circle_v1",
+    "robot_radius_m": 0.29,
+    "camera_height_m": 1.5,
+    "base_offset_z_m": -1.933398013054255e-05,
+    "selection": "stretch3",
+    "motion_model": "high_level_xy_yaw",
+    "collision_model": "2d_circle",
+    "manipulation_model": "logical_pick_place"
+  },
+  "cpu_regression": {
+    "RoboOdyssey": {
+      "ran": 240,
+      "passed": 240,
+      "skipped": 0
+    },
+    "RoboOdyssey-SessionBuilder": {
+      "ran": 158,
+      "passed": 155,
+      "skipped": 3,
+      "skip_reason": "optional Isaac/pxr checks"
+    },
+    "RoboOdyssey-DataSynth": {
+      "ran": 67,
+      "passed": 64,
+      "skipped": 3,
+      "skip_reason": "legacy roboodyssey.data.sources absent in current public core; rejection behavior tested"
+    }
+  },
+  "environment": {
+    "cpu_python": "3.14",
+    "isaac_python": "3.12",
+    "isaac_sim": "6.0.1-rc.7",
+    "gpu": "RTX 4090",
+    "gpu_index": 1
+  },
+  "packaging": {
+    "all_packages_installed_outside_source": true,
+    "pip_check": "passed",
+    "public_only_install": "passed; no Builder, DataSynth, old benchmark package or restools",
+    "wheel_source_files_match": true,
+    "wheels": {
+      "roboodyssey-0.2.1-py3-none-any.whl": {
+        "sha256": "a08586c1c68afae4aad2b3b07ec933e201f79aa28d1cdde47c248d8557c8bfca",
+        "bytes": 5823693
+      },
+      "roboodyssey_datasynth-0.1.0-py3-none-any.whl": {
+        "sha256": "28dbc17eeaa560d5cbdddf44cbc2791131d5c069a9d3a4bf586a79eacbd4adf5",
+        "bytes": 43193
+      },
+      "odyssey_task_builder-0.2.1-py3-none-any.whl": {
+        "sha256": "cafcfc339286f0052c6fc7d831206ceaba87f1231c4cdbdd843bcc5dcc84dfce",
+        "bytes": 229493
+      }
+    }
+  },
+  "joint_oracle_execution": {
+    "official": false,
+    "execution_profile": "private_state_oracle",
+    "tasks_total": 5,
+    "tasks_evaluated": 5,
+    "tasks_excluded": 0,
+    "task_success_rate": 1.0,
+    "score_100": 99.99999999999999,
+    "evaluation_valid": true,
+    "metrics_complete": true,
+    "captured_frames": 46,
+    "quality_valid": true,
+    "training_sample_count": 1,
+    "resources": {
+      "wall_seconds": 51.83253001817502,
+      "process_peak_rss_kib": 7476896,
+      "captured_frames": 46,
+      "p95_capture_seconds": 0.050933377468027174,
+      "missed_slots": 0,
+      "observation_bytes": 24355357
+    },
+    "scene_id": "synthetic_demo"
+  },
+  "public_only_official_execution": {
+    "official": true,
+    "agent": "python -m roboodyssey.agents.random_agent",
+    "profile": "stretch3_kinematic_circle_v1",
+    "tasks_total": 5,
+    "tasks_evaluated": 4,
+    "tasks_excluded": 1,
+    "task_success_rate": 0.0,
+    "score_100": 0.0,
+    "evaluation_valid": true,
+    "metrics_complete": true,
+    "note": "Smoke agent ends each task after five actions. Task failures are expected and must retain valid scoring."
+  },
+  "rescore": {
+    "public_only_install": true,
+    "passed": true,
+    "score_difference": 0.0
+  },
+  "reproduction": {
+    "cpu_public": "python -m roboodyssey check",
+    "cpu_builder": "python -m unittest discover -s tests/unit -v",
+    "cpu_synthesis": "python -m unittest discover -s tests -v",
+    "joint_acceptance": "python RoboOdyssey-DataSynth/scripts/check_three_repo.py --output NEW_DIRECTORY",
+    "joint_isaac": "ISAAC_PYTHON RoboOdyssey-DataSynth/scripts/check_three_repo.py --isaac --gpu 1 --output NEW_DIRECTORY",
+    "official": "ISAAC_PYTHON -m roboodyssey run --dataset SCENE_SEQUENCE --official --gpu 1 --agent-cmd \"PUBLIC_ENV_PYTHON -m roboodyssey.agents.random_agent\" --run-directory NEW_DIRECTORY",
+    "rescore": "python -m roboodyssey analyze RUN_DIRECTORY --rescore --output NEW_DIRECTORY"
+  },
+  "limits": [
+    "Fixed-pose 2D circle and high-level XY/yaw; logical pick/place, no physical arm or differential-drive claim.",
+    "Synthetic short-sequence validation; no production throughput claim.",
+    "No old-format migration or automatic relabeling of undeclared body identities."
+  ],
+  "repository": "RoboOdyssey",
+  "scope": "Historical validation of original PR #5 (aed30d5), before PR #4 adaptation. This is not evidence for the integrated tree."
+}

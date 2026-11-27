@@ -11,6 +11,8 @@ RoboOdyssey 是面向长期具身任务的仿真交互与评测框架。核心�
 | 使用已有发布数据包运行评测 | [运行指南](docs/LAUNCH.md)、[数据格式](docs/DATA_FORMAT.md) |
 | 接入被评 Agent | [Agent Integrations](https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations)、[协议](docs/PROTOCOL.md) |
 | 生成或导出新任务数据 | [DataSynth](https://github.com/Qingyan-QLab/RoboOdyssey-DataSynth) |
+| 使用公共执行、采集及数据接口 | [公共 API](docs/PUBLIC_API.md)、[批次与比较](docs/BATCH.md) |
+| 了解默认 Stretch3 本体与边界 | [机器人说明](docs/ROBOTS.md)、[运动说明](docs/MOTION.md) |
 | 查看指标与结果 | [评分规则](docs/RULES.md)、[输出说明](docs/OUTPUTS.md) |
 | 按改造计划继续工作 | [11.23 框架改进说明](11.23重要框架改进说明.md) |
 
@@ -43,4 +45,4 @@ python3 -m roboodyssey check
 python3 -m roboodyssey inventory --check
 ```
 
-完整文档见 [docs 索引](docs/README.md)，逐文件清单见 [FILE_MAP](docs/FILE_MAP.md)。场景资产、发布数据、模型源码及权重不随本仓库分发；第三方声明见 [NOTICE](NOTICE)。
+完整文档见 [docs 索引](docs/README.md)，逐文件清单见 [FILE_MAP](docs/FILE_MAP.md)。默认 Stretch3 profile 和机器人 USD 随 wheel 分发；场景资产、发布数据、模型源码及权重另行提供；第三方声明见 [NOTICE](NOTICE)。

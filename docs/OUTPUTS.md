@@ -40,6 +40,15 @@
 `provenance.json` 保存核对信息，不自动打包模型或源代码；复现时仍须取得对应资产、代码和环境。
 dirty 源码哈希不能替代保存该源码版本。已有外部模型服务的权重身份不能仅由 TCP 端口证明。
 
+`run_config.json.robot_body` 与 `evaluation_profile.robot_body` 保存本体选择和运动模式。
+默认记录 `selection=stretch3`、`profile_version=stretch3_kinematic_circle_v1`、半径 0.29 m、相机高度 1.5 m。
+正式 `evaluation_profile.embodiment_version` 为该版本；非官方为 `experimental`，完整本体身份仍保留。
+机器人配置另保存 `model_id`、`profile_sha256`、`assets_sha256` 和落地偏移，
+`robot_profile_path` 只用于定位本机文件；本机绝对路径不参与本体身份哈希。
+半径和相机高度同时进入 evaluation_profile，实际相机高度另存为 `camera.height_m`。
+因此更换本体、配置或资产会改变评测身份；Stretch3 与原圆柱成绩不可混合。
+旧结果保持原样，不补写或覆盖旧身份。具体本体规则见 [RULES](RULES.md#embodiment)。
+
 ## Session 原始证据
 
 | 路径 | 职责 |
@@ -103,7 +112,7 @@ step_efficiency_score／time_efficiency_score 缺少已验证的 GT 成本时为
 
 API Agent 将配套日志写入配置的 `log_dir/<instance_id>/`，例如
 `results/gpt6_astra_api_diagnostic/agent/<instance_id>/`；对应 benchmark 输出可位于同一实验父目录的
-`benchmark/<自动运行目录>/`。它不属于结果 manifest 的 Session 证据路径，不改变现有评分契约。
+`roboodyssey/<自动运行目录>/`。它不属于结果 manifest 的 Session 证据路径，不改变现有评分契约。
 启动时 Agent 将绝对日志目录写入 stderr，运行器的运行日志保留该行，作为外部产物关联入口。
 
 | 文件 | 内容 |

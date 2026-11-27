@@ -1,0 +1,3 @@
+
+# Preserve byte-for-byte generated robot layers referenced by pinned SHA-256.
+roboodyssey/scenes/robot_assets/usd/**/*.usda whitespace=-blank-at-eof

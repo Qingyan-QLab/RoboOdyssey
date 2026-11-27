@@ -62,6 +62,8 @@ def floor_placement(entity: dict, destination: dict, entities: list[dict], rooms
                                   robot_radius=navigation["robot_radius"],
                                   environment_setup=navigation.get('environment_setup'))
     base_grid['scene_id'] = navigation.get('scene_id')
+    if navigation.get('robot_profile') is not None:
+        base_grid['robot_profile'] = deepcopy(navigation['robot_profile'])
     polygon = destination.get("boundary_polygon", [])
     if not polygon:
         raise PlacementError("destination has no floor polygon")
@@ -104,6 +106,8 @@ def floor_placement(entity: dict, destination: dict, entities: list[dict], rooms
                                        robot_radius=base_grid["robot_radius"],
                                        environment_setup=navigation.get('environment_setup'))
         final_grid['scene_id'] = navigation.get('scene_id')
+        if navigation.get('robot_profile') is not None:
+            final_grid['robot_profile'] = deepcopy(navigation['robot_profile'])
         final = navigation_task(moved, final_grid, 0, start=pickup_cell)
         if final is None:
             continue

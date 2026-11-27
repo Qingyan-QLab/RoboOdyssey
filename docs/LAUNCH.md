@@ -15,6 +15,9 @@
 | `agent_integrations.simplenav experiment --config <json> --execute` | 管理模型与 Isaac、记录状态、自动分析和清理 | 是 |
 | `run --dataset ... --agent-cmd ...` | 用 Isaac Python 执行通用 Agent | 是 |
 | `analyze <run> --output <新目录>` | 运行与实验结果的离线分析 | 否 |
+| `batch <config> --output <新目录>` | 通用串行批次计划；执行参数见 [BATCH](BATCH.md) | 默认否 |
+| `compare <config> --output <新目录>` | 相同评测条件下严格配对比较，参数见 [BATCH](BATCH.md) | 否 |
+| `robots` | 列出本体与本地资产状态；`--check` 另检查全部六类外部资产 | 否 |
 | `check` | 独立完整 CPU 回归；禁止 Builder／模型／仿真导入 | 否 |
 | `check --core` | 快速基础测试子集 | 否 |
 
@@ -86,5 +89,11 @@ external 不启动或停止模型，仅在显式执行时检查连接；不会�
 - [Agent Integrations](https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations) 中的 `scripts/run_holoagent.sh --dataset ...`：HoloAgent 服务组合；启动模型前先做 CPU 数据预览。
 - `scripts/check_request_evidence.py` 和 `scripts/run_request_diagnostics.py`：真实取证／受控失败诊断；后者 `--prepare-only` 为 CPU，见 [SimpleNav 专题](https://github.com/Qingyan-QLab/RoboOdyssey-Agent-Integrations/blob/main/docs/SIMPLENAV_V5.md)。
 
-真实运行的最小测试直接复用 `run --dataset ... --max-steps 20`，选择范围遵守执行规则。
+真实运行的最小测试直接复用 `run --dataset ... --agent-cmd "<外部 Agent 命令>" --max-steps 20`，选择范围遵守执行规则。
 普通 `analyze` 也可分析这些诊断结果。
+
+## 公共执行与独立安装
+
+安装 wheel 后，`python -m roboodyssey check` 检查包内公共模块和 `interaction` 协议资源；源码目录运行该命令则执行完整 CPU 回归。真实执行始终显式传入 `--agent-cmd`，核心不包含被评 Agent 实现。
+
+默认本体为 `stretch3_kinematic_circle_v1`（0.29 m 圆代理、1.50 m 虚拟相机）。`--official` 要求冻结的本体、预算和场景声明；旧未声明场景仍可非官方运行。独立 Scene/Session 输入同样校验本体，`--sensor-plugin` 保持通用插件接入。详情见 [ROBOTS](ROBOTS.md) 和 [RULES](RULES.md)。

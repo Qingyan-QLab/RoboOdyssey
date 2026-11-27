@@ -68,7 +68,10 @@ def main(argv: list[str] | None = None) -> int:
         'run': ('run', {}, 'run the benchmark'),
         'validate': ('validation.dataset', {}, 'CPU dataset/archive/collection validation'),
         'analyze': ('reporting.analyze', {}, 'CPU repair, score and reset reports'),
+        'compare': ('reporting.compare', {}, 'compare explicitly paired runs with matching evaluation conditions'),
+        'batch': ('launch.batch', {}, 'plan or run generic serial sequence attempts with bounded retries'),
         'inventory': ('validation.inventory', {}, 'generate/check the complete source file map'),
+        'robots': ('scenes.robot_body', {}, 'list or verify cylinder and local robot bodies (CPU only)'),
     }
     if raw and raw[0] in commands:
         module, options, _ = commands[raw[0]]
@@ -90,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument('--core', action='store_true', help='fast subset; use the default for complete integration checks')
     args = parser.parse_args(raw)
     if args.command == 'check':
-        return subprocess.run([sys.executable, str(ROOT/'scripts/check_cpu.py'), *(['--core'] if args.core else [])]).returncode
+        return subprocess.run([sys.executable, '-m', 'roboodyssey.validation.check', *(['--core'] if args.core else [])]).returncode
     if args.command == "doctor":
         return _doctor(args.dataset, args.require_isaac)
     if args.command == "download":

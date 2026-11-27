@@ -101,30 +101,11 @@ class SessionRecord:
 class BenchmarkDataset:
     """Read-only access to published scene assets and frozen requests."""
 
-    def __init__(self, root: str | Path, *, sequence_id: str | None = None):
-        from ..data.archive import dataset_root
+    def __init__(self, root: str | Path, *, sequence_id: str | None = None, scene=None):
+        from ..data import load_sequence
 
-        self.root = dataset_root(root)
-        if (self.root / "scene_manifest.json").is_file():
-            from ..data.frozen import select_sequences
-
-            paths = select_sequences(self.root, [sequence_id] if sequence_id else None)
-            if len(paths) != 1:
-                raise ValueError(
-                    "scene collection contains multiple sequences; select --sequence or --all-sequences"
-                )
-            self.root = paths[0]
-        manifest_path = self.root / "dataset_manifest.json"
-        if not manifest_path.is_file():
-            raise FileNotFoundError(
-                f"dataset_manifest.json not found under {self.root}"
-            )
-        self.manifest = _read_json(manifest_path)
-        if sequence_id and self.manifest.get("sequence_id") != sequence_id:
-            raise ValueError("selected sequence_id differs from archive")
-        from ..data.frozen import SequenceData
-
-        self._requests = SequenceData(self.root).load()
+        self._requests = load_sequence(root, sequence_id=sequence_id, scene=scene)
+        self.root, self.manifest = self._requests.root, self._requests.manifest
         self._scenes = {self.manifest["scene_id"]: self.manifest}
 
     def scene_ids(self) -> list[str]:
@@ -181,6 +162,7 @@ class BenchmarkDataset:
                 runtime_scene_cache=self._requests.path("runtime_scene_cache"),
                 dataset_root=self.root,
                 plan=self._requests.path("plan"),
+                scene_version_root=self._requests.version.directory,
             )
             metadata = _read_json(path)
             metadata["runtime_contract"] = self.manifest["runtime_contract"]

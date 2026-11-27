@@ -84,6 +84,17 @@ session_bundle/
 
 `session.json` 沿用当前公开 Session 契约，包含 `scene_id`、`session_id`、`context`、`time_context` 和有序 `tasks`。GT 与模板数量必须与任务数量一致。多个 Session 按传入顺序执行，必须指向同一 `scene_id` 和 `sequence_id`，且 Session ID 不得重复。包内私有资源不会发送给 Agent。
 
+## 公共入口与冻结场景
+
+`roboodyssey.load_scene` 和 `roboodyssey.data.load_scene` 继续将本页资源包加载为 `SceneSpec`。
+相同公共入口也接受冻结发布场景，按 manifest 返回 `SceneVersion`；不会转换现有资源格式。
+若需要固定返回类型，可从 `roboodyssey.data` 显式导入 `load_scene_spec` 或 `load_scene_version`。
+`revision=` 仅供冻结场景选择使用，资源包不支持该参数。混合两类 manifest 的目录或 tar 必须使用显式入口。
+
+资源 manifest 的 `schema_version: 1` 与冻结 sequence 的 schema 5/layout 2 是不同契约。
+`load_sequence`、`validate_binding` 和进程内策略 `run_sequence` 面向冻结数据；资源包仍通过
+`BenchmarkSuite` 加载有序 Session。`BenchmarkSuite.from_published` 保留从发布数据进入同一评测器的方式。
+
 ## Python 调用
 
 ```python

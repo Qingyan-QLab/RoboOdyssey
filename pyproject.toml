@@ -4,12 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "RoboOdyssey"
-version = "0.0.1"
-description = "Long-horizon embodied agent evaluation for continual adaptation across environments"
+version = "0.2.1"
+description = "Long-horizon embodied agent evaluation and reusable execution core for Isaac Sim"
 readme = "README.md"
 license-files = ["NOTICE", "roboodyssey/contracts/LICENSE"]
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.23", "Pillow>=9.0"]
+
+[project.optional-dependencies]
+reference = ["restools==0.0.1.3"]
 
 [tool.setuptools.packages.find]
 include = ["roboodyssey", "roboodyssey.*"]
@@ -20,3 +23,6 @@ testpaths = ["tests"]
 [tool.setuptools.package-data]
 "roboodyssey.interaction" = ["protocol_schema.json"]
 "roboodyssey.contracts" = ["LICENSE"]
+"roboodyssey.reference_oracles" = ["ORIGIN.md"]
+
+"roboodyssey.scenes" = ["robot_assets/**/*", "robot_assets/*"]
