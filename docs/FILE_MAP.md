@@ -3,7 +3,7 @@
 由 `python -m roboodyssey inventory` 生成；`python -m roboodyssey inventory --check` 检查遗漏和过期。
 只维护生成器中的文件用途；目录、链接和主要定义从源码提取。无需同步改写 PROJECT_GUIDE。
 
-本页逐项列出 **154 个源码、配置、文档和测试文件**。
+本页逐项列出 **159 个源码、配置、文档和测试文件**。
 不导入被检查模块，不读取模型、视频或场景资产内容，不启动 Isaac/GPU。
 运行产物/本地文件按末尾目录模板说明，不逐项列出每次实验产生的重复文件。
 
@@ -20,6 +20,7 @@ RoboOdyssey/
 │       └── test.yml
 ├── docs/
 │   ├── validation/
+│   │   ├── navigation_arrival_20261127.md
 │   │   └── pr_integration_20261126.json
 │   ├── AGENT_INTEGRATION.md
 │   ├── ARCHITECTURE.md
@@ -165,6 +166,9 @@ RoboOdyssey/
 │   ├── fixtures/
 │   │   └── contextual.json
 │   ├── frozen_data.py
+│   ├── test_arrival_replay.py
+│   ├── test_arrival_runtime.py
+│   ├── test_arrival_snapshot.py
 │   ├── test_batch.py
 │   ├── test_benchmark.py
 │   ├── test_comparison.py
@@ -172,6 +176,7 @@ RoboOdyssey/
 │   ├── test_data_api_compatibility.py
 │   ├── test_evaluation_metrics.py
 │   ├── test_external_sources.py
+│   ├── test_navigation_arrival.py
 │   ├── test_observations.py
 │   ├── test_planned_projection.py
 │   ├── test_policy_runtime.py
@@ -249,6 +254,7 @@ RoboOdyssey/
 
 | 文件 | 内容 / 作用 | 主要函数 / 类 |
 |---|---|---|
+| [navigation_arrival_20261127.md](../docs/validation/navigation_arrival_20261127.md) | 导航障碍到达规则的 CPU/安装包验收、真实模拟器未通过项与版本边界。 | — |
 | [pr_integration_20261126.json](../docs/validation/pr_integration_20261126.json) | 当前 PR 的 CPU、隔离安装和三库 Isaac 联合验收；含版本、资产身份与可复现命令。 | — |
 
 ### roboodyssey
@@ -282,7 +288,7 @@ RoboOdyssey/
 | [placement.py](../roboodyssey/contracts/placement.py) | 实际状态下地面放置、碰撞和可接近性几何计算。 | `PlacementError`, `translated_entity`, `floor_placement` |
 | [planned_history.py](../roboodyssey/contracts/planned_history.py) | 预计事件与位置账本；明确不代表执行观察。 | `HistoryError`, `PlannedHistory` |
 | [planning.py](../roboodyssey/contracts/planning.py) | 复用请求修补与几何的 CPU 预计序列推演；不可冒充正式参考。 | `PlannedProjection`, `project_sequence` |
-| [raster.py](../roboodyssey/contracts/raster.py) | 房间/对象几何与开门策略的动态碰撞栅格。 | `derive_navigation` |
+| [raster.py](../roboodyssey/contracts/raster.py) | 房间/对象几何与开门策略的动态碰撞栅格。 | `derive_navigation`, `derive_arrival_navigation` |
 | [references.py](../roboodyssey/contracts/references.py) | 元数据对象身份、区域名称、真实历史和位置变化的统一指代校验/修补。 | `same_location`, `RepairUnavailable`, `area_name`, `object_reference` |
 | [requests.py](../roboodyssey/contracts/requests.py) | 完整请求的实际历史记录、旧契约修补和 mutation 放置校验。 | `history_event`, `prepare_mutation` |
 | [snapshots.py](../roboodyssey/contracts/snapshots.py) | 计划/实际来源隔离、状态版本、快照分支与缓存失效。 | `state_version`, `StateSnapshot`, `StateBranch` |
@@ -304,13 +310,13 @@ RoboOdyssey/
 | 文件 | 内容 / 作用 | 主要函数 / 类 |
 |---|---|---|
 | [__init__.py](../roboodyssey/evaluation/__init__.py) | Python 包入口。 Task scoring, numerical diagnostics and result aggregation. | — |
-| [navigation.py](../roboodyssey/evaluation/navigation.py) | 实际任务起点网格的带权最短路、机器人半径、目标区域和有序路线动态规划。 | `GridDistance`, `box_distance`, `OrderedRoute` |
+| [navigation.py](../roboodyssey/evaluation/navigation.py) | 实际任务起点网格的带权最短路、机器人半径、目标区域和有序路线动态规划。 | `GridDistance`, `box_distance`, `GoalRegion`, `OrderedRoute` |
 | [reference.py](../roboodyssey/evaluation/reference.py) | 私有评分参考入口，独立于可执行 Oracle 策略。 | `ScoringReference` |
 | [report.py](../roboodyssey/evaluation/report.py) | 请求/Session/序列及能力统计的唯一汇总实现。 | `write_summary` |
 | [requests.py](../roboodyssey/evaluation/requests.py) | v5 完整请求的运行时 GT 判定与任务计分。 | `evaluate_request`, `request_totals` |
 | [rescore.py](../roboodyssey/evaluation/rescore.py) | 显式历史重算、验证归档及真实状态重建参考地图、历史耗时和分组统计。 | `final_state`, `ReconstructedReference`, `historical_measurements`, `metric_breakdown` |
-| [task_diagnostics.py](../roboodyssey/evaluation/task_diagnostics.py) | 从真实 GT/动作日志复算逐任务评分、距离、路径与 reset；不渲染报告。 | `xy`, `target_box`, `is_applied_reset`, `motion_metrics`, `progress_fraction`, `navigation_diagnostics`, `reset_diagnostics`, `compact_gt` 等 13 个定义 |
-| [task_metrics.py](../roboodyssey/evaluation/task_metrics.py) | 版本化导航进展×路径效率、搬运/问答部分分、真实耗时和评分完整性。 | `prepare_reference`, `load_reference`, `navigation_metric`, `evaluate_metrics`, `metric_totals` |
+| [task_diagnostics.py](../roboodyssey/evaluation/task_diagnostics.py) | 从真实 GT/动作日志复算逐任务评分、距离、路径与 reset；不渲染报告。 | `xy`, `target_box`, `is_applied_reset`, `motion_metrics`, `progress_fraction`, `navigation_diagnostics`, `reset_diagnostics`, `compact_gt` 等 16 个定义 |
+| [task_metrics.py](../roboodyssey/evaluation/task_metrics.py) | 版本化导航进展×路径效率、搬运/问答部分分、真实耗时和评分完整性。 | `prepare_reference`, `load_reference`, `navigation_reference_changed`, `navigation_metric`, `evaluate_metrics`, `metric_totals` |
 | [transfer.py](../roboodyssey/evaluation/transfer.py) | 搬运剩余交付成本、真实抓放约束、可移除占据网格与进展乘效率评分。 | `collision_digest`, `TransferReference`, `transfer_metric` |
 
 ### roboodyssey/evaluation/metrics
@@ -466,6 +472,9 @@ Importing this package or answers does not import restools or Isaac. | — |
 | 文件 | 内容 / 作用 | 主要函数 / 类 |
 |---|---|---|
 | [frozen_data.py](../tests/frozen_data.py) | 选择仓库内已冻结合成样例并写入临时测试归档；不调用任务生成器。 | `key`, `goal`, `task`, `fixture_v3`, `select_scenario`, `runtime_cache`, `write_dataset`, `prepare_scene` 等 10 个定义 |
+| [test_arrival_replay.py](../tests/test_arrival_replay.py) | 新旧到达规则、已完成排除及在线/离线成功证据一致性回归。 | `ArrivalReplayTests` |
+| [test_arrival_runtime.py](../tests/test_arrival_runtime.py) | 真实请求运行器的障碍到达、派发排除、证据保存与复评分回归。 | `MaplessEnv`, `GridEnv`, `Walker`, `ArrivalRuntimeTests` |
+| [test_arrival_snapshot.py](../tests/test_arrival_snapshot.py) | 目标障碍层生成、支撑物、墙体重叠及实际环境地图一致性回归。 | `entity`, `goal`, `ArrivalSnapshotTests` |
 | [test_batch.py](../tests/test_batch.py) | 真实CPU子进程故障注入，验证重试保留、失败不筛选、超时和取消终态。 | `BatchTests` |
 | [test_benchmark.py](../tests/test_benchmark.py) | 发布数据、显式数据路径 CLI 及模型接口基础回归。 | `MetricTests`, `DatasetTests` |
 | [test_comparison.py](../tests/test_comparison.py) | 比较条件拒混、缺失/失败、重复 attempt 与配对汇总回归。 | `make_run`, `ComparisonTests` |
@@ -473,6 +482,7 @@ Importing this package or answers does not import restools or Isaac. | — |
 | [test_data_api_compatibility.py](../tests/test_data_api_compatibility.py) | SceneSpec 与 SceneVersion 公共入口分派、tar、哈希与混合格式拒绝回归。 | `SceneApiCompatibilityTests` |
 | [test_evaluation_metrics.py](../tests/test_evaluation_metrics.py) | 部分得分、绕路/墙体/目标顺序、reset 计费、参考哈希及新旧评分回归。 | `pose`, `truth`, `trajectory`, `nav_score`, `PathMetricTests`, `SemanticMetricTests`, `ReproducibilityTests` |
 | [test_external_sources.py](../tests/test_external_sources.py) | 目录/tar 加载、恶意归档拒绝及核心交互评分回归。 | `ExternalSourceTests` |
+| [test_navigation_arrival.py](../tests/test_navigation_arrival.py) | 隔墙、门洞、窄缝、物体接近与地点路径距离的统一到达区域回归。 | `goal`, `wall_grid`, `ObstacleAwareArrivalTests` |
 | [test_observations.py](../tests/test_observations.py) | 固定时钟、慢 Agent 持续收帧、阻塞接收/渲染失败和 JSONL 通信 CPU 回归。 | `ManualTime`, `ObservationTests` |
 | [test_planned_projection.py](../tests/test_planned_projection.py) | 预计语义修补、历史边界、来源拒混与失败原子性回归。 | `PlannedProjectionTests` |
 | [test_policy_runtime.py](../tests/test_policy_runtime.py) | 实际执行、私有输入、原始采集引用及状态分支隔离回归。 | `PolicyRuntimeTests` |
@@ -485,7 +495,7 @@ Importing this package or answers does not import restools or Isaac. | — |
 | [test_runtime_v5.py](../tests/test_runtime_v5.py) | 请求追踪、录像、Isaac 后端与预检之外的运行回归。 | `RecordingTests`, `CapturingEnv`, `V5TraceTests`, `IsaacBackendTests`, `PreflightTests` |
 | [test_scene_camera.py](../tests/test_scene_camera.py) | 共享相机矩形视野比例与资源关闭回归。 | `SceneCameraTests` |
 | [test_scene_sequences.py](../tests/test_scene_sequences.py) | 场景多序列选择、隔离进程及集合汇总回归。 | `ResetAgent`, `SequenceIntegrationTests` |
-| [test_task_diagnostics.py](../tests/test_task_diagnostics.py) | 正式分、目标顺序、导航距离、路径及 reset 诊断回归。 | `pose`, `truth_at`, `action`, `outcome`, `NavigationDiagnosticsTests`, `TaskScoreReportTests` |
+| [test_task_diagnostics.py](../tests/test_task_diagnostics.py) | 正式分、目标顺序、导航距离、路径及 reset 诊断回归。 | `pose`, `truth_at`, `action`, `outcome`, `navigation_diagnostics`, `NavigationDiagnosticsTests`, `TaskScoreReportTests` |
 | [test_transfer_metrics.py](../tests/test_transfer_metrics.py) | 搬运连续进展、抓放范围/偏移、错误放置、绕路/reset、参考保存和证据完整性回归。 | `pose`, `object_at`, `fixture`, `change`, `run_cost`, `TransferCostTests` |
 
 ### tests/fixtures

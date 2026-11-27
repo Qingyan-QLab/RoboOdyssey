@@ -131,27 +131,27 @@ def write_diagnostics(report, output):
               '已排除任务为 N/A，问答／搬运不支持为 0。导航分仅适用于 visit／establish_place／revisit_place，'
               '带 navigation 能力标签的问答不套用导航到达评分。')
     if report.get('rescored'):
-        caveat += ' 本报告已按 progress_path_v3 显式复算，原任务分另存 original_task_score；原运行的观测频率、任务文本及实际成功结果均保留。'
+        caveat += ' 本报告按当前规则显式复核可用证据，原任务分另存 original_task_score；旧导航规则造成的跳过或提前停止不能补算，须重新运行。原始结果保留。'
     if report.get('reference_reconstruction'):
         caveat += ' 路径参考地图由哈希验证的数据归档和每任务真实状态离线重建，基准网格逐格一致；它不是当时保存的实时地图快照。'
     methods = [
-        '评分版本以每条记录为准：progress_path_v3 的导航按有序进度×路径效率计 0–100 分；搬运按剩余交付成本进展×成本效率计分。缺失评分证据保持 N/A。明确排除项为 N/A。',
+        '评分版本以每条记录为准：progress_path_v4 的导航按经过障碍验证的有序进度×路径效率计 0–100 分；搬运按剩余交付成本进展×成本效率计分。缺失评分证据保持 N/A。明确排除项为 N/A。',
         ('本次路径参考来自验证归档及真实状态的离线重建；' if report.get('reference_reconstruction') else '路径参考来自任务开始时保存的碰撞网格；')+'以 8 邻域带权最短路计算，不穿对角墙角，目标为运行时 GT 合格区域。它是网格近似，不是 Isaac navmesh。',
         '路径效率=D0/max(D0,已计费路径+剩余有序路线)，任务导航分=有序进度×路径效率。reset 按端点网格距离、实际位移和一格长度的最大值计费，不免费传送。',
-        'progress_path_v3 搬运：P=clip(1-J剩余/J初始,0,1)，E=J初始/max(J初始,C已付+J剩余)，得分=100×P×E。移动距离按标准移动步长换算，每次抓取/放置尝试计 1，reset 按等效路径换算；转向和等待不额外计费。最终状态决定剩余工作，放错或掉落会重新计入恢复成本。',
+        '搬运：P=clip(1-J剩余/J初始,0,1)，E=J初始/max(J初始,C已付+J剩余)，得分=100×P×E。移动距离按标准移动步长换算，每次抓取/放置尝试计 1，reset 按等效路径换算；转向和等待不额外计费。最终状态决定剩余工作，放错或掉落会重新计入恢复成本。',
         '搬运参考保存真实对象原点、可移除占据、房间标签、地面、抓取半径和放置偏移；放置方向使用 72 个等间隔朝向的网格近似，当前姿态额外检查真实朝向。缺少参考或证据时分数为 N/A，任务保留在分母。',
         '问答仅按答案正确性计 100／0，没有观察或动作过程分。离线复算保留日志中记录的完整成功标志。',
         '步骤与真实耗时单独显示。没有已验证的 GT 参考步数／耗时时，效率比值为 N/A；2 FPS 不等于每个动作固定 0.5 秒。',
-        'd 为机器人 XY 点到运行时目标包围盒的距离；r=max(d−达标容差,0)。单目标进度=100×clip(1−r/r起点,0,1)。起点已在范围内时，在范围内为 100，否则为 0。',
+        '到达区域同时检查机器人可站立性、障碍和目标接近关系。固定地点按可行路径距离应用容差；物体按无阻挡的合法接近区域判断。直线距离小于容差不能单独证明到达。单目标进度使用到合法区域的网格剩余距离。',
         '多目标进度=100×(按序已完成数＋当前目标进度)/目标数。每段起点取前一个目标实际到达位置；同一到达样本不计下一个目标。最佳分是整条有序进度曲线的最大值。',
         '下表每个目标的起始／最终／全程最近距离是几何记录；只有激活后的到达才计入有序完成。已完成访问不会因为随后离开而撤销。',
-        '行走长度是非 reset 动作前后 XY 位移之和。reset 传送距离单列；图中灰线是 reset，蓝线包含传送前后跳变，绿虚线是达标容差。',
+        '行走长度是非 reset 动作前后 XY 位移之和。reset 传送距离单列；图中灰线是 reset，蓝线为包围盒直线距离，绿虚线仅表示直线距离阈值，越过该线不等于成功。',
         '最终／最佳进度包含 reset 后的实际位置，表示本次运行的几何进展；是否由传送帮助须结合 reset 明细判断，不归功于正常行走。',
         '碰撞次数指 collision=true 的动作条数，主碰撞率=碰撞平移动作/全部平移动作；JSON 和 CSV 同时保留全动作碰撞率。',
         '路径直达率只用于成功且无 reset 的任务：各段到达标范围的直线距离下界之和/行走长度，最大为 1。不是导航网格最短路或 SPL；失败、含 reset 或起始下界为零时为 N/A。',
         '恢复阶段到下一次 reset、当前目标按序达标或任务结束为止，比较同一个目标。仅传送带来的接近不算后续行走改善；几何进展不能证明识别或彻底解困。',
         f'近达标带：距达标范围 ≤ {report["near_margin_m"]:g} m，仅用于分类。始终未进入该带不等于模型未识别；反复碰撞／reset 表示至少 2 次。分类可重叠。',
-        '下方原有距离曲线和最终／最佳几何进度仍使用包围盒欧氏距离，与新网格路径分分别标注。缺失或无法验证的参考不补造网格评分；缺失证据不缩小分母。',
+        '距离曲线保留包围盒欧氏距离用于诊断；完成阶段和最终／最佳进度使用共享的障碍感知判定与网格距离。缺失或无法验证的参考不补造评分；缺失证据不缩小分母。',
         '历史记录耗时来自 task_start 到 task_complete 的单调时钟跨度，包含记录和录像开销；Agent 往返来自请求／响应时间戳，不等于纯模型推理耗时。它们不冒充新运行的精确动作计时。']
     parts = ['<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>逐任务评分与导航诊断</title>',
         '<style>body{font:15px system-ui;margin:24px;color:#172c3b}p{line-height:1.65}table{border-collapse:collapse;width:100%}td,th{border:1px solid #d6e0e5;padding:8px;text-align:left;vertical-align:top}th{background:#eaf1f5;position:sticky;top:0}td.num{white-space:nowrap}.scroll{overflow:auto}details{margin:12px 0}section{border-top:2px solid #abc;padding:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:600px;overflow:auto}a{color:#086591}input,select{padding:8px;margin:6px}svg{max-width:800px;width:100%;background:#f6f9fb}svg text{font-size:11px}li{margin:8px 0}.note{background:#fff2da;padding:12px}</style>',

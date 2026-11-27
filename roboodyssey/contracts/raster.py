@@ -60,7 +60,8 @@ def _inflate_occupancy(grid: list[list[int]], cells: int) -> list[list[int]]:
     return result
 
 def derive_navigation(rooms: list[dict], objects: list[dict], *, resolution: float = .05,
-                      robot_radius: float | None = None, environment_setup: dict | None = None) -> dict:
+                      robot_radius: float | None = None, environment_setup: dict | None = None,
+                      excluded_object_ids=()) -> dict:
     profile = None
     if robot_radius is None:
         from ..scenes.robot_body import default_robot_identity
@@ -108,6 +109,8 @@ def derive_navigation(rooms: list[dict], objects: list[dict], *, resolution: flo
     for obj in objects:
         category = str(obj.get("category", "")).lower()
         if obj['object_id'] in open_doors:
+            if obj['object_id'] in excluded_object_ids:
+                continue
             floor = next((r.get('floor_height', 0.) for r in rooms if r['room_id'] == obj.get('room_id')), 0.)
             for collider in open_doors[obj['object_id']]['colliders']:
                 box = collider['world_aabb']
@@ -121,7 +124,8 @@ def derive_navigation(rooms: list[dict], objects: list[dict], *, resolution: flo
             # Dynamic bodies remain uninflated.  The runtime applies the
             # agent's circular footprint while sweeping, so inflating a door
             # here would double-count the robot radius and narrow the doorway.
-            _mark_aabb(dynamic if movable else static_base, bounds, origin, resolution, 0)
+            if obj['object_id'] not in excluded_object_ids:
+                _mark_aabb(dynamic if movable else static_base, bounds, origin, resolution, 0)
             if movable and category == "door":
                 # Room polygons can rasterize the wall behind a closed door as
                 # outside-room cells.  Reserve the panel footprint as the
@@ -136,3 +140,45 @@ def derive_navigation(rooms: list[dict], objects: list[dict], *, resolution: flo
             "room_labels": labels, "room_ids": room_ids,
             **({'environment_setup': deepcopy(environment_setup)} if environment_setup else {}),
             **({'robot_profile': profile} if profile is not None else {})}
+
+
+def derive_arrival_navigation(rooms, objects, target_object_ids, *, resolution=.05,
+                              robot_radius=.29, environment_setup=None):
+    """Build standing occupancy and target-height approach evidence.
+
+    Exclusions remove object contributions before rasterization; they never
+    erase cells from a combined map, where a target can overlap a wall.
+    The robot still stands/moves on the complete collision map. The approach
+    layer tests geometry at the target's centre height, not camera visibility.
+    Structural room walls and non-target doors are always retained.
+    """
+    import numpy as np
+
+    def raster(excluded=()):
+        return derive_navigation(rooms, objects, resolution=resolution, robot_radius=0,
+                                 environment_setup=environment_setup,
+                                 excluded_object_ids=excluded)
+
+    def blocked(grid):
+        return (np.asarray(grid['static_base_occupancy'], dtype=bool)
+                | np.asarray(grid['dynamic_occupancy'], dtype=bool))
+
+    full = raster()
+    entities = {obj['object_id']: obj for obj in objects}
+    targets = {}
+    for oid in sorted(set(target_object_ids)):
+        if oid not in entities or _aabb(entities[oid]) is None:
+            raise ValueError('arrival target has no actual collision geometry: '+oid)
+        low, high = _aabb(entities[oid])
+        height = (low[2]+high[2])/2
+        excluded = {oid}
+        for other_id, obj in entities.items():
+            if str(obj.get('category', '')).lower() in {'door', 'wall'}:
+                continue
+            bounds = _aabb(obj)
+            if bounds and not bounds[0][2] <= height <= bounds[1][2]:
+                excluded.add(other_id)
+        targets[oid] = blocked(raster(excluded))
+    return {'blocked': blocked(full), 'origin': full['origin_xy'],
+            'resolution': float(resolution), 'radius': float(robot_radius),
+            'target_blocked': targets}

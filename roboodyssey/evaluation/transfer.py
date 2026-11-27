@@ -53,7 +53,7 @@ def collision_digest(snapshot):
         raw = np.asarray(snapshot['blocked'], dtype=bool)
         doors = np.asarray(snapshot.get('door_blocked', np.zeros_like(raw)), dtype=bool)
         origin, resolution, radius, carried = snapshot['origin'], snapshot['resolution'], snapshot['radius'], snapshot.get('carried_radius', 0)
-    metadata = {'shape': list(raw.shape), 'origin': np.round(origin, 9).tolist(),
+    metadata = {'shape': list(raw.shape), 'origin': np.round(np.asarray(origin, dtype=float), 9).tolist(),
         'resolution': round(float(resolution), 9), 'radius': round(float(radius), 9),
         'carried_radius': round(float(carried), 9)}
     digest = hashlib.sha256(json.dumps(metadata, sort_keys=True).encode())

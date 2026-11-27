@@ -100,6 +100,9 @@ class ReconstructedReference:
         env._origin = self.navigation['origin_xy']
         env._door_open = {door['object_id'] for door in self.setup['doors']}
         env._door_cells = {}  # all-open-doors geometry is baked into the map
+        # Arrival layers use the same verified recorded object geometry. The
+        # replay environment must never read a live USD stage or import Isaac.
+        env.runtime_state_v5 = lambda: deepcopy(before)
         # CPU reconstruction uses captured evidence; it must never fabricate
         # a live USD readback or initialize a simulator.
         env._refresh_vlm_navigation(measured_state=before)
@@ -122,7 +125,8 @@ class ReconstructedReference:
         directory = self.output/'references'/safe_id(scene_id)/safe_id(session_id)
         directory.mkdir(parents=True, exist_ok=True)
         reference, grid = prepare_reference(env, truth, directory)
-        reference['file'] = (directory/reference['file']).relative_to(self.output).as_posix()
+        if reference.get('status') == 'ready':
+            reference['file'] = (directory/reference['file']).relative_to(self.output).as_posix()
         reference.update(source=self.provenance['kind'], original_live_snapshot=False,
             state_before_sha256=hashlib.sha256(json.dumps(before, sort_keys=True,
                 separators=(',', ':'), ensure_ascii=False, allow_nan=False).encode()).hexdigest())

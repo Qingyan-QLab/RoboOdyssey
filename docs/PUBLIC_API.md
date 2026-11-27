@@ -1,6 +1,6 @@
-# 三库公共 API（0.2.1）
+# 三库公共 API（0.2.2）
 
-安装包名 `RoboOdyssey`，导入名 `roboodyssey`；消费者依赖 `>=0.2.1,<0.3`。
+安装包名 `RoboOdyssey`，导入名 `roboodyssey`；消费者依赖 `>=0.2.2,<0.3`。
 `roboodyssey.PUBLIC_API_VERSION` 与 `roboodyssey.data.API_VERSION` 当前均为 `1`。
 冻结发布数据继续使用 sequence schema 5、layout 2、`contextual_requests` v3；同时保留
 PR #4 的独立 Scene/Session 资源包（resource manifest schema 1）。两种契约并存，不自动转换数据或改写身份。
@@ -44,6 +44,7 @@ collection/tar 或 sequence 目录。多 sequence 集合须传 `sequence_id`，�
 
 `roboodyssey.contracts` 维护名称、状态归一化、语言、历史修补、碰撞栅格、放置候选等共同规则。
 `instantiate_request_v3(..., state_source='actual')` 是默认运行模式；它拒绝计划历史。
+`completed`、`instantiate_request_v3` 的导航已完成判断需要 `navigation=GridDistance(...)` 障碍证据；缺失时保守地保留任务，不以直线距离排除。
 显式 `state_source='planned'` 使用 `assumed_dispatch`、`assumed_success` 等假设字段，输出
 `planned_predispatch_state`，不能生成执行事件或正式评分证据。
 
@@ -59,7 +60,7 @@ assert plan['state_source'] == 'planned'
 assert plan['formal_score_reference'] is False
 ```
 
-CPU 投影模型为 `grid_aabb_expected_success_v1`，按实际起始状态重新计算预计路径、放置和答案，
+CPU 投影模型为 `grid_aabb_expected_success_v2`，按实际起始状态重新计算预计路径、放置和答案，导航端点必须满足共享障碍到达规则，
 共用请求修补、already-satisfied 判断及历史绑定。历史 before/after 始终指完整请求边界。
 保守的栅格/AABB 放置与 avatar 固定前向偏移放置不是同一种模型；投影不能证明物理可执行，不能替代正式参考。
 路线/放置/历史不确定时返回 `indeterminate`、停止位置及原因，已完成前缀保留。
@@ -109,7 +110,7 @@ summary = run_sequence(sequence, policy, '/data/new_attempt', env_factory=factor
 
 ## 参考模型
 
-正式 `progress_path_v3` 继续使用现有 `GridDistance` 与 `TransferReference`。
+正式 `progress_path_v4` 继续使用现有 `GridDistance` 与 `TransferReference`。
 `GridDistance.next_waypoint` 和 `TransferReference.guidance` 给策略提供同一参考场的下一步查询，
 不代替实际抓放反馈或成功判定。`guidance` 的 phase 为 `approach`、`carry`、`completed`；
 能否抓取与可放置朝向另由 `can_pick`、`placement_yaw_degrees` 返回。
@@ -120,7 +121,7 @@ summary = run_sequence(sequence, policy, '/data/new_attempt', env_factory=factor
 ## 独立安装和检查
 
 ```bash
-python -m pip install ./roboodyssey-0.2.1-py3-none-any.whl
+python -m pip install ./roboodyssey-0.2.2-py3-none-any.whl
 python -m roboodyssey check
 python -m roboodyssey validate --help
 python -m roboodyssey run --help
@@ -157,3 +158,21 @@ Builder 应将 `default_robot_identity()` 写入 `scene_version.json.robot_profi
 Stretch3 合成场景 5/5 任务成功、46 帧、1 个完整 sequence 训练样本；公开核心独立官方入口及离线重评分通过。
 [可复现条件和完整验收记录](validation/pr_integration_20261126.json)区分私有状态 Oracle 闭环与官方脚本验证，
 并列出 CPU 条件跳过和物理控制边界。
+
+
+## 障碍约束到达规则（0.2.2）
+
+`GoalRegion(grid, goal)` 是导航到达判定的共同实现；`OrderedRoute` 的区域、阶段推进和距离使用同一规则。
+`evaluate_request(..., navigation=grid_or_ordered_route)` 必须接收障碍证据才能证明导航成功。
+纯问答、搬运判据不要求该参数。地图缺失或导航任务内地图/目标改变时，不回退到直线距离成功。
+
+`GridDistance` 的可选 `target_blocked` 是按对象 ID 索引的障碍数组：结构墙/门及目标高度的其他物体，
+仅排除目标自身及不与该高度相交的物体贡献；完整占据图仍用于机器人站立与运动。
+接近关系对机器人中心至目标表面的整段平端矩形检查障碍，宽为机器人直径，接触边界也算阻挡；
+矩形在目标表面结束，既不跳过末端窄缝，也不把目标背后的墙算作接近方向的障碍。
+`IsaacVLNEnv.evaluation_arrival(goals)` 生成并核对这些层；`derive_arrival_navigation` 供 CPU 预计状态使用。
+保存/加载参考时一并保存这些数组，`metric_reference.sha256` 覆盖全部内容。
+旧后端仅提供合并障碍图时使用保守几何判定，不从合并图抹除目标包围盒。
+
+当前成功规则为 `contextual_v3_obstacle_aware_v2`，导航参考为 `grid_distance_v2_obstacle_aware_arrival`，
+指标为 `progress_path_v4`。历史运行若因旧规则提前停止或跳过任务，必须重新执行才能产生新规则成绩。

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "RoboOdyssey"
-version = "0.2.1"
+version = "0.2.2"
 description = "Long-horizon embodied agent evaluation and reusable execution core for Isaac Sim"
 readme = "README.md"
 license-files = ["NOTICE", "roboodyssey/contracts/LICENSE"]

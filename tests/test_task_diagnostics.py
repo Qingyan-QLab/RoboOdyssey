@@ -5,8 +5,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import numpy as np
 
-from roboodyssey.evaluation.task_diagnostics import analyze_run, navigation_diagnostics, task_score
+from roboodyssey.evaluation.task_diagnostics import analyze_run, navigation_diagnostics as _navigation_diagnostics, task_score
+from roboodyssey.evaluation.navigation import GridDistance
+from roboodyssey.evaluation.task_metrics import METRIC_VERSION
 from roboodyssey.reporting.task_diagnostics_report import write_diagnostics
 
 
@@ -33,6 +36,11 @@ def outcome(*hits, success=False, steps=0):
             'success': success, 'reason_code': 'success' if success else 'step_limit', 'steps': steps,
             'goal_results': [{'goal_id': f'g{i}', 'success': hit is not None,
                               **({'pose_index': hit} if hit is not None else {})} for i, hit in enumerate(hits)]}
+
+
+def navigation_diagnostics(truth, state, actions, result):
+    grid = GridDistance(np.zeros((10, 60), bool), [-5.5, -4.5], 1, 0)
+    return _navigation_diagnostics(truth, state, actions, result, navigation=grid)
 
 
 class NavigationDiagnosticsTests(unittest.TestCase):
@@ -122,7 +130,7 @@ class TaskScoreReportTests(unittest.TestCase):
     def test_excluded_na_and_unsupported_zero(self):
         unsupported = {**outcome(None), 'agent_status': 'unsupported'}
         self.assertIsNone(task_score(unsupported))
-        unsupported['evaluation']={'version':'progress_path_v3','score_max':100,'score':0}
+        unsupported['evaluation']={'version':METRIC_VERSION,'score_max':100,'score':0}
         self.assertEqual(task_score(unsupported), 0)
         for reason in ('already_satisfied', 'unavailable'):
             self.assertIsNone(task_score({'scored': False, 'dispatched': False, 'reason_code': reason, 'failure_causes': [{'task_id': 'source'}]}))

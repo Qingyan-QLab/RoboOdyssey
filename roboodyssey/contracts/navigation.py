@@ -109,6 +109,29 @@ def _target_geometry(entity: dict) -> dict | None:
     }
 
 
+def _arrival_path(grid, goal, start_position):
+    """Plan to the shared arrival region without snapping across obstacles."""
+    from ..evaluation.navigation import OrderedRoute
+
+    route = OrderedRoute(grid, [goal])
+    field = route.single[0]
+    point = list(start_position)
+    points = [point]
+    seen = set()
+    while not route.reached(point, 0):
+        identity = tuple(round(v, 10) for v in point[:2])
+        if identity in seen or len(seen) > grid.raw.size:
+            return None
+        seen.add(identity)
+        waypoint = grid.next_waypoint(field, point)
+        if (waypoint is None or math.dist(point[:2], waypoint) <= 1e-9
+                or not grid.connected_segment(point, waypoint)):
+            return None
+        point = [*waypoint, start_position[2]]
+        points.append(point)
+    return points
+
+
 def navigation_task(
     entity: dict,
     grid: dict,
@@ -117,28 +140,44 @@ def navigation_task(
     task_family: str = "object_navigation",
     room: dict | None = None,
     start: tuple[int, int] | None = None,
+    arrival_grid=None,
+    arrival_goal: dict | None = None,
+    start_position: list[float] | None = None,
 ) -> tuple[dict, dict] | None:
-    goal = nearest_free(grid, _object_center(entity), str(entity.get("room_id")))
-    if goal is None:
-        return None
-    parents = _parents_from_goal(grid, goal)
-    if start is None:
-        for y, row in enumerate(grid["static_occupancy"]):
-            for x, static in enumerate(row):
-                if static or grid["dynamic_occupancy"][y][x] or (x, y) == goal:
-                    continue
-                candidate = _path_from_parents(parents, (x, y))
-                if candidate and len(candidate) > 2:
-                    start, route = (x, y), candidate
-                    break
-            if start is not None:
-                break
-        if start is None:
+    if arrival_grid is not None:
+        if arrival_goal is None or (start is None and start_position is None):
+            raise ValueError('arrival planning requires a goal and an actual planned start')
+        initial = start_position if start_position is not None else cell_world(grid, start)
+        route_positions = _arrival_path(arrival_grid, arrival_goal, initial)
+        if not route_positions:
             return None
+        start = arrival_grid.cell(initial)
+        goal = arrival_grid.cell(route_positions[-1])
     else:
-        route = _path_from_parents(parents, start)
-        if not route:
+        if arrival_goal is not None or start_position is not None:
+            raise ValueError('arrival evidence is required for a contextual approach route')
+        goal = nearest_free(grid, _object_center(entity), str(entity.get("room_id")))
+        if goal is None:
             return None
+        parents = _parents_from_goal(grid, goal)
+        if start is None:
+            for y, row in enumerate(grid["static_occupancy"]):
+                for x, static in enumerate(row):
+                    if static or grid["dynamic_occupancy"][y][x] or (x, y) == goal:
+                        continue
+                    candidate = _path_from_parents(parents, (x, y))
+                    if candidate and len(candidate) > 2:
+                        start, route = (x, y), candidate
+                        break
+                if start is not None:
+                    break
+            if start is None:
+                return None
+        else:
+            route = _path_from_parents(parents, start)
+            if not route:
+                return None
+        route_positions = [cell_world(grid, cell) for cell in route]
     task_id = f"navigation_{index:03d}"
     target = {"object_ids": [entity["object_id"]], "room_ids": [entity.get("room_id")]}
     description = entity_label(entity)
@@ -179,7 +218,7 @@ def navigation_task(
         task["relative_goal"] = {"position_offset": offset, "orientation_offset": None}
     expected_outcome = {
         "reached_target": True,
-        "goal_pose": {"position": cell_world(grid, goal), "orientation": None},
+        "goal_pose": {"position": route_positions[-1], "orientation": None},
     }
     if target.get("object_ids") and (target_geometry := _target_geometry(entity)):
         expected_outcome["target_geometry"] = target_geometry
@@ -192,14 +231,17 @@ def navigation_task(
         "expected_outcome": expected_outcome,
         "reference_trajectory": {
             "coordinate_frame": "world",
-            "points": [{"position": cell_world(grid, cell), "orientation": None} for cell in route],
+            "points": [{"position": position, "orientation": None} for position in route_positions],
             "length_m": sum(
+                math.dist(a[:2], b[:2])
+                for a, b in zip(route_positions, route_positions[1:])
+            ) if arrival_grid is not None else sum(
                 grid["resolution"] * math.sqrt(2 if a[0] != b[0] and a[1] != b[1] else 1)
                 for a, b in zip(route, route[1:])
             ),
             "planner": {
-                "name": "grid_shortest_path",
-                "version": 1,
+                "name": "obstacle_aware_arrival_grid" if arrival_grid is not None else "grid_shortest_path",
+                "version": 2 if arrival_grid is not None else 1,
                 "connectivity": grid["connectivity"],
                 "robot_radius_m": grid["robot_radius"],
             },

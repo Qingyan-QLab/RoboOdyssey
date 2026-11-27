@@ -24,6 +24,10 @@ class Env:
     def get_agent_pose(self):return deepcopy(self.pose)
     def set_task(self,t):self.task=t
     def observe(self):return {'images':{}}
+    def evaluation_navigation(self):
+        import numpy as np
+        # This protocol fixture explicitly represents an unobstructed world.
+        return {'blocked':np.zeros((40,60),bool),'origin':[0,0],'resolution':.1,'radius':0}
     def observe_with_evidence(self,requirements):
         self.observation_frame_id+=1
         return self.observe(),[{'object_id':r['object_id'],'frame_id':self.observation_frame_id,'current_frame':True,
@@ -126,6 +130,15 @@ class RequestRunnerTests(unittest.TestCase):
                 for row in rows:
                     row.pop('evaluation',None);row.pop('metric_reference',None);row.pop('task_timing',None)
                 session_file(session, name).write_text(''.join(json.dumps(row)+'\n' for row in rows))
+            # This fixture emulates a run without any original collision
+            # snapshot evidence. Do not retain fingerprints of the synthetic
+            # open-grid environment when reconstructing its archive geometry.
+            changelog = session_file(session, 'action_changelog.jsonl')
+            action_rows = [json.loads(line) for line in changelog.read_text().splitlines()]
+            for row in action_rows:
+                row.pop('navigation_collision_before_sha256', None)
+                row.pop('navigation_collision_after_sha256', None)
+            changelog.write_text(''.join(json.dumps(row)+'\n' for row in action_rows))
             metrics=json.loads((session/'metrics.json').read_text())
             for row in metrics['task_results']:row.pop('evaluation',None);row.pop('task_timing',None)
             (session/'metrics.json').write_text(json.dumps(metrics))
@@ -144,7 +157,7 @@ class RequestRunnerTests(unittest.TestCase):
                 ReconstructedReference(archive,config,Path(tmp)/'bad')
 
     def test_stream_continues_during_inference_without_inspection_scoring(self):
-        from test_observations import ManualTime
+        from tests.test_observations import ManualTime
         timer = ManualTime()
         c, i, p = fixture_v3([task('ask', goal('book_red', 'answer', query='current_room'))])
         compiled = select_scenario(c, p)
@@ -304,8 +317,11 @@ class RequestRunnerTests(unittest.TestCase):
         self.assertFalse(evaluate_request(truth,state,[],[],evidence,'yes and no')['success'])
         c,i,p=fixture_v3([task('nav',goal('book_red'),goal('cabinet_dark'))]);truth=select_scenario(c,p)['sessions'][0]['ground_truth'][0]
         poses=[{'position':[.6,2.6,0]},{'position':[1.1,1.1,0]}]
-        self.assertFalse(evaluate_request(truth,state,poses,[],[],None)['success'])
-        self.assertTrue(evaluate_request(truth,state,list(reversed(poses)),[],[],None)['success'])
+        import numpy as np
+        from roboodyssey.evaluation.navigation import GridDistance
+        navigation = GridDistance(np.zeros((40, 60), bool), [0, 0], .1)
+        self.assertFalse(evaluate_request(truth,state,poses,[],[],None,navigation=navigation)['success'])
+        self.assertTrue(evaluate_request(truth,state,list(reversed(poses)),[],[],None,navigation=navigation)['success'])
 
     def test_wrong_or_missing_answer_never_earns_observation_credit(self):
         c,i,p=fixture_v3([task('ask',goal('book_red','answer',query='current_room'))])
